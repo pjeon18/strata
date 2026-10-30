@@ -28,7 +28,13 @@ export const ICON = {
 };
 
 // ---------- loading ----------
-export function loading(frac) { $('loadFill').style.width = `${Math.round(frac * 100)}%`; }
+// loading spells the name: one more letter pops in for each sixth of progress
+export function loading(frac) {
+  const n = Math.min(6, Math.floor(frac * 6.2) + 1);
+  [...$('loadWord').children].forEach((el, k) => el.classList.toggle('on', k < n));
+}
+// soft red haze around the edges when the core is one hit from losing
+export const danger = on => $('danger').classList.toggle('on', !!on);
 
 // ---------- mute ----------
 export function mute(on, onToggle) {

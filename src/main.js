@@ -401,6 +401,7 @@ function setMode(m, scr = S.screen) {
   HUD.screen(m === 'title' ? scr : m === 'pause' ? 'pause' : m === 'over' ? 'result' : null);
   showGhost([]);
   if (m !== 'play') HUD.tab(null);
+  if (m === 'play') hudIntegrity(); else if (m !== 'pause') HUD.danger(false);
 }
 const go = scr => { sfx.select(); setMode('title', scr); };
 function start(game = S.game) {
@@ -864,6 +865,8 @@ function hudSeal() {
 function hudIntegrity() {
   if (S.game === 'containment') HUD.gems(S.crit, CRIT, 'crit');
   else HUD.gems(S.integrity, 3, 'core');
+  // one hit from losing: last core life, or one seal from critical
+  HUD.danger(S.mode === 'play' && (S.game === 'containment' ? S.crit >= CRIT - 1 : S.game === 'survival' && S.integrity <= 1));
 }
 let noticeT = 0;
 function notice(text, tone = 'violet') { noticeT = Math.max(2.4, text.length * 0.06); HUD.tab(null); requestAnimationFrame(() => HUD.tab(text, tone)); }
@@ -978,6 +981,7 @@ else {
       if (k < 1) return;
       clearInterval(fill);
       $('loading').classList.add('out');
+      $('splash').classList.add('enter');
       setTimeout(() => $('loading').classList.add('hidden'), 480);
       // an invite link drops you straight into the room
       if (params.get('room')) { V.join(params.get('room')); toLobby(); }

@@ -87,14 +87,14 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 .callout.in { opacity: 1; }
 .callout.out { opacity: 0; transform: translateY(-18px) scale(.96); transition: opacity .25s, transform .3s var(--out); }
 .callout .big { display: inline-flex; font-size: 96px; font-weight: 900; letter-spacing: -.01em; line-height: 1.05; }
-.callout .big span { display: inline-block; opacity: 0; animation: drop .5s var(--spring) forwards; paint-order: stroke fill; }
-.callout.good .big span { color: #fff8e6; -webkit-text-stroke: 5px #ff8a1f; }
-.callout.good .big { filter: drop-shadow(0 4px 0 #e0661a) drop-shadow(0 8px 14px rgba(150, 60, 0, .3)); }
-.callout.bad .big span { background: linear-gradient(180deg, #fff 35%, #d9ccff); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; -webkit-text-stroke: 5px #5b3fc4; }
-.callout.bad .big { filter: drop-shadow(0 4px 0 #4a30a8) drop-shadow(0 8px 14px rgba(40, 20, 120, .3)); }
+.callout .big span { display: inline-block; opacity: 0; animation: drop .5s var(--spring) forwards; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.callout.good .big span { background-image: linear-gradient(180deg, #ffd27a 5%, #ff8a3d 55%, #ff5a3d); }
+.callout.good .big { filter: drop-shadow(0 3px 0 #d9541c) drop-shadow(0 10px 18px rgba(150, 60, 0, .25)); }
+.callout.bad .big span { background-image: linear-gradient(180deg, #c9b8ff 5%, #7a5cf0 60%, #5b3fc4); }
+.callout.bad .big { filter: drop-shadow(0 3px 0 #3e2a9a) drop-shadow(0 10px 18px rgba(40, 20, 120, .25)); }
 @keyframes drop { 0% { opacity: 0; transform: translateY(-70px) scale(.6) rotate(-8deg); } 60% { opacity: 1; transform: translateY(6px) scale(1.06); } 100% { opacity: 1; transform: none; } }
-.callout .small { margin-top: 4px; font-size: 38px; font-weight: 900; color: #fff; -webkit-text-stroke: 3.5px #7a4fe0; paint-order: stroke fill;
-  opacity: 0; animation: rise .45s var(--out) .32s forwards; filter: drop-shadow(0 2px 0 #5a33b8); }
+.callout .small { margin-top: 6px; font-size: 34px; font-weight: 900; color: #fff;
+  opacity: 0; animation: rise .45s var(--out) .32s forwards; filter: drop-shadow(0 2px 10px rgba(40, 20, 120, .55)); }
 @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .hatch { position: absolute; top: -10px; width: 120px; height: 150px; opacity: 0; background: repeating-linear-gradient(-55deg, var(--yellow) 0 7px, transparent 7px 17px);
   -webkit-mask: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent); mask: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent); animation: hatch .9s var(--out) .15s forwards; }
@@ -120,12 +120,21 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
   -webkit-mask: linear-gradient(to top, #000 35%, transparent); mask: linear-gradient(to top, #000 35%, transparent); }
 @keyframes bandIn { from { opacity: 0; } }
 .logo { position: fixed; left: 50%; bottom: 7vh; transform: translateX(-50%); text-align: center; line-height: .9; }
-.logo span { display: block; padding: 0 .1em; font-size: clamp(130px, 19vw, 250px); font-weight: 900; letter-spacing: -.02em; color: #fff;
+.logo .word { display: flex; padding: 0 .1em; font-size: clamp(130px, 19vw, 250px); font-weight: 900; letter-spacing: -.02em; color: #fff; transform: translateX(120vw);
   /* stacked layers give the letters thickness; the soft shadows below set them in the air above the water */
   text-shadow: 0 2px 0 #e6f0f9, 0 4px 0 #d6e5f2, 0 6px 0 #c4d8ea, 0 8px 0 #b2cbe1, 0 10px 0 #a0bed8,
     0 13px 3px rgba(20, 50, 100, .22), 0 24px 30px rgba(10, 40, 90, .3), 0 44px 70px rgba(10, 40, 90, .22);
-  animation: hover 5s ease-in-out infinite; }
-@keyframes hover { 50% { transform: translateY(-6px); } }
+  }
+.logo .word i { display: inline-block; font-style: normal; }
+/* enters from the right: speeds up the whole way, then stops dead with a small jolt */
+#splash.enter .logo .word { animation: whoosh .7s forwards; }
+@keyframes whoosh {
+  0% { transform: translateX(120vw) skewX(-16deg); animation-timing-function: cubic-bezier(.55, 0, .95, .55); }
+  80% { transform: translateX(-2%) skewX(-16deg); animation-timing-function: cubic-bezier(.2, 1.3, .4, 1); }
+  100% { transform: none; } }
+/* then a slow wave: one letter lifts at a time, left to right, with a rest between passes */
+#splash.enter .logo .word i { animation: wave 4.2s ease-in-out calc(1.1s + var(--k) * .38s) infinite; }
+@keyframes wave { 0%, 22%, 100% { transform: none; } 11% { transform: translateY(-16px); } }
 .press { position: fixed; right: 34px; bottom: 26px; display: flex; align-items: center; gap: 8px; color: #fff; text-shadow: 0 1px 6px rgba(20, 40, 90, .5); font-weight: 800; font-size: 17px; animation: breathe 1.6s ease-in-out infinite; }
 .press .ico { color: #fff; width: 22px; height: 22px; }
 @keyframes breathe { 50% { opacity: .45; } }
@@ -209,18 +218,20 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 }
 
 /* the wordmark: same blue italic gradient as the splash logo, at any size */
-.wordmark, .load-logo { display: inline-block; padding: 0 .12em; font-weight: 900; font-style: italic; letter-spacing: -.02em; line-height: 1.05;
+.wordmark { display: inline-block; padding: 0 .12em; font-weight: 900; font-style: italic; letter-spacing: -.02em; line-height: 1.05;
   background: linear-gradient(170deg, #4fb3ff 10%, #1f5fe0 55%, #1a3fb0); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; transform: skewX(-6deg); }
 .panel-head .wordmark { font-size: 46px; }
 
 /* loading */
-#loading { z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
+#loading { z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: radial-gradient(60% 60% at 30% 30%, #ffe3ef, transparent 70%), radial-gradient(50% 60% at 75% 70%, #dcd6ff, transparent 70%), radial-gradient(40% 50% at 60% 20%, #d3f6ee, transparent 70%), #fbfbff;
   transition: opacity .45s var(--out); }
 #loading.out { opacity: 0; pointer-events: none; }
-.load-logo { font-size: clamp(96px, 14vw, 180px); animation: hop 1.2s var(--spring) infinite alternate; }
-.load-bar { width: min(360px, 70vw); height: 14px; border-radius: 99px; background: #fff; box-shadow: inset 0 0 0 2px #e6e8f0, 0 4px 14px rgba(40, 60, 140, .12); overflow: hidden; }
-.load-bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--coral-a), var(--coral-b)); transition: width .25s var(--out); }
+.load-word { display: flex; gap: .02em; font-size: clamp(100px, 15vw, 190px); font-weight: 900; letter-spacing: .02em; color: #2a6ff0;
+  text-shadow: 0 2px 0 #a9c8f7, 0 4px 0 #97bbf3, 0 6px 0 #85aef0, 0 9px 3px rgba(30, 60, 140, .2), 0 18px 26px rgba(30, 60, 140, .18); }
+.load-word i { display: inline-block; font-style: normal; opacity: 0; transform: translateY(30px) scale(.4); }
+.load-word i.on { animation: pop .42s var(--spring) forwards; }
+@keyframes pop { to { opacity: 1; transform: none; } }
 
 /* mute: always reachable, bottom-left */
 .mute { position: fixed; left: 20px; bottom: 18px; width: 44px; height: 44px; border-radius: 50%; border: 0; padding: 10px; background: rgba(255,255,255,.95); color: var(--navy-solid);
@@ -370,3 +381,9 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 #rRows .row .who svg { width: 20px; height: 20px; }
 #rRows .who.t0 { background: linear-gradient(90deg, #ff9a6a, #ff5a3d); } #rRows .who.t1 { background: linear-gradient(90deg, #a993ff, #6a4fe0); }
 #rRows .row .tot { border-radius: 0 12px 12px 0; }
+
+/* danger: a soft red haze breathing at the edges of the screen */
+#danger { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .9s var(--out);
+  background: radial-gradient(ellipse 72% 66% at center, transparent 50%, rgba(255, 60, 80, .2) 76%, rgba(240, 30, 60, .5) 100%); }
+#danger.on { opacity: 1; animation: breatheRed 2.6s ease-in-out infinite; }
+@keyframes breatheRed { 50% { opacity: .55; } }
