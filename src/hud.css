@@ -120,9 +120,12 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
   -webkit-mask: linear-gradient(to top, #000 35%, transparent); mask: linear-gradient(to top, #000 35%, transparent); }
 @keyframes bandIn { from { opacity: 0; } }
 .logo { position: fixed; left: 50%; bottom: 7vh; transform: translateX(-50%); text-align: center; line-height: .9; }
-.logo span { display: block; padding: 0 .1em; font-size: clamp(90px, 13vw, 170px); font-weight: 900; font-style: italic; letter-spacing: -.03em;
-  background: linear-gradient(170deg, #4fb3ff 10%, #1f5fe0 55%, #1a3fb0); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  transform: skewX(-6deg); filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 6px 26px rgba(255, 255, 255, .75)); }
+.logo span { display: block; padding: 0 .1em; font-size: clamp(130px, 19vw, 250px); font-weight: 900; letter-spacing: -.02em; color: #fff;
+  /* stacked layers give the letters thickness; the soft shadows below set them in the air above the water */
+  text-shadow: 0 2px 0 #e6f0f9, 0 4px 0 #d6e5f2, 0 6px 0 #c4d8ea, 0 8px 0 #b2cbe1, 0 10px 0 #a0bed8,
+    0 13px 3px rgba(20, 50, 100, .22), 0 24px 30px rgba(10, 40, 90, .3), 0 44px 70px rgba(10, 40, 90, .22);
+  animation: hover 5s ease-in-out infinite; }
+@keyframes hover { 50% { transform: translateY(-6px); } }
 .press { position: fixed; right: 34px; bottom: 26px; display: flex; align-items: center; gap: 8px; color: #fff; text-shadow: 0 1px 6px rgba(20, 40, 90, .5); font-weight: 800; font-size: 17px; animation: breathe 1.6s ease-in-out infinite; }
 .press .ico { color: #fff; width: 22px; height: 22px; }
 @keyframes breathe { 50% { opacity: .45; } }
@@ -137,7 +140,13 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 .panel hr { border: 0; height: 3px; background: #dfe1e8; border-radius: 3px; margin: 18px 4px; }
 .opt { position: relative; display: block; width: 100%; margin: 12px 0; padding: 14px 20px; border-radius: 99px; background: #fff; font: inherit; font-size: 23px; font-weight: 900; cursor: pointer;
   border: 3px solid currentColor; transition: transform .14s var(--spring), box-shadow .14s; }
-.opt.coral { color: var(--coral-b); } .opt.violet { color: var(--violet-a); } .opt.grey { color: #50546a; border-color: #d6d9e2; background: #f7f7fa; font-size: 18px; }
+.opt.coral { color: var(--coral-b); } .opt.violet { color: var(--violet-a); } .opt.grey { color: #50546a; border-color: #d6d9e2; font-size: 18px; }
+/* resting state: tinted face + a 4px lip in the button's own colour, so it reads as a key you can press */
+.opt:not(.sel) { background: color-mix(in srgb, currentColor 7%, #fff);
+  box-shadow: 0 4px 0 color-mix(in srgb, currentColor 28%, #fff), 0 8px 16px rgba(20, 40, 90, .08); }
+.opt.grey:not(.sel) { background: #f4f5f8; box-shadow: 0 4px 0 #d9dce5, 0 8px 16px rgba(20, 40, 90, .06); }
+.opt:not(.sel):hover { transform: translateY(-2px); }
+.opt:not(.sel):active { transform: translateY(3px); box-shadow: 0 1px 0 color-mix(in srgb, currentColor 28%, #fff); }
 .opt.sel { color: #fff; border-color: transparent; transform: translateX(10px) scale(1.03); box-shadow: 0 8px 18px rgba(240, 48, 106, .28); }
 .opt.coral.sel { background: linear-gradient(90deg, var(--coral-a), var(--coral-b)); }
 .opt.violet.sel { background: linear-gradient(90deg, var(--violet-a), var(--violet-b)); box-shadow: 0 8px 18px rgba(90, 80, 240, .3); }
@@ -147,8 +156,8 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 @keyframes nudge { 50% { transform: translateX(5px); } }
 .opt:active { transform: translateX(10px) scale(.97); }
 
-.desc { position: absolute; right: 0; bottom: 12vh; width: min(720px, 60vw); padding: 18px 48px 22px 80px; color: #fff;
-  background: linear-gradient(90deg, rgba(255, 106, 61, 0), rgba(255, 106, 61, .92) 14%, var(--coral-b)); }
+.desc { position: absolute; right: 0; bottom: 12vh; width: min(800px, 66vw); padding: 18px 48px 22px 160px; color: #fff;
+  background: linear-gradient(90deg, rgba(255, 106, 61, 0), rgba(255, 106, 61, .92) 130px, var(--coral-b)); }
 .desc.in { animation: slideIn .45s var(--out); }
 @keyframes slideIn { from { transform: translateX(60px); opacity: 0; } }
 .desc-meta { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 2px solid rgba(255,255,255,.7); }
@@ -295,7 +304,7 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 
 /* ---------- versus ---------- */
 .opt.teal { color: #14a99a; }
-.opt.teal.sel { background: linear-gradient(90deg, #2fd6b8, #149fd6); box-shadow: 0 8px 18px rgba(20, 160, 180, .3); }
+.opt.teal.sel { color: #fff; background: linear-gradient(90deg, #2fd6b8, #149fd6); box-shadow: 0 8px 18px rgba(20, 160, 180, .3); }
 .panel-head .back { width: 40px; height: 40px; font-size: 26px; box-shadow: 0 3px 8px rgba(20, 40, 90, .2); margin-right: 6px; }
 .field { display: block; margin: 8px 0 4px; color: var(--text); font-size: 14px; font-weight: 800; }
 .field span { display: block; margin: 0 0 6px 8px; }

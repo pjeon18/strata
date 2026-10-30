@@ -108,8 +108,6 @@ export function sea() {
         vec3 c = mix(sea, deep, smoothstep(.45, .75, blot));
         c = mix(c, shallow, smoothstep(40., 2., d));
         c = mix(c, vec3(1.), smoothstep(2.5, .5, d) * .7);         // surf line
-        float g = h(floor(p * 2.2) + floor(t * 2.));                  // glints
-        c += vec3(1.) * step(.9993, g) * .5;
         gl_FragColor = vec4(c, 1.);
         #include <colorspace_fragment>
         #include <fog_fragment>
