@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Strata</title>
+  <link rel="stylesheet" href="/src/hud.css" />
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="flash"></div>
+
+  <div id="hud" class="hidden">
+    <div id="labels"></div>
+    <div class="me">
+      <div class="avatar" id="avatar"></div>
+      <div class="lozenge" id="scoreBox"><b id="score">0</b><i class="burst"></i></div>
+      <div class="nametag" id="tag">Layer 1</div>
+    </div>
+    <div class="tab" id="tab"></div>
+    <div class="meter" id="meter">
+      <div class="count"><b id="countNow">0</b><span id="countAll">/ 54</span></div>
+      <div class="track"><i id="fill"></i></div>
+    </div>
+    <div class="board" id="board"><span class="sc a" id="scA">0</span><span class="time" id="boardT">3:00</span><span class="sc b" id="scB">0</span></div>
+    <div class="pills">
+      <div class="pill hidden" id="clockPill"><span class="ico" id="clockIcon"></span><span id="clock">0:00</span></div>
+      <div class="pill gems" id="gems"></div>
+    </div>
+    <canvas class="radar" id="radar"></canvas>
+    <div class="cross" id="cross">
+      <svg class="ammo" viewBox="0 0 80 80"><path class="bg" d="M40 6 A34 34 0 0 1 40 74"/><path class="fg" id="ammoFg" d="M40 6 A34 34 0 0 1 40 74"/></svg>
+      <i></i>
+    </div>
+    <div id="arrows"></div>
+    <div class="slot" id="slot"><div class="bubble" id="slotIcon"></div><kbd>E</kbd><span class="slot-name" id="slotName">Empty</span></div>
+    <div class="effects" id="effects"></div>
+    <div class="hints" id="keys"></div>
+  </div>
+
+  <div id="callout" class="callout"></div>
+
+  <div id="loading" class="screen">
+    <div class="load-logo">Strata</div>
+    <div class="load-bar"><i id="loadFill"></i></div>
+  </div>
+
+  <div id="splash" class="screen hidden">
+    <div class="band"></div>
+    <div class="logo"><span>Strata</span></div>
+    <div class="press"><span class="ico" data-icon="mouse"></span>Click to start</div>
+  </div>
+
+  <div id="menu" class="screen hidden">
+    <div class="panel">
+      <div class="panel-head"><span class="wordmark">Strata</span></div>
+      <button class="opt coral" data-pick="survival">Survival</button>
+      <button class="opt violet" data-pick="containment">Containment</button>
+      <button class="opt teal" data-pick="versus">Versus</button>
+      <hr />
+      <div class="panel-foot"><button class="opt grey" data-pick="how">How to play</button></div>
+    </div>
+    <div class="desc" id="desc"><div class="desc-meta" id="descMeta"></div><p id="descText"></p></div>
+    <div class="hints menu-hints"><span><kbd>Hover</kbd>Select</span><span><kbd>Click</kbd>OK</span></div>
+  </div>
+
+  <div id="levels" class="screen hidden pick">
+    <div class="pick-head"><button class="back" data-back>‹</button><span class="wordmark">Survival</span></div>
+    <div class="cards" id="levelCards"></div>
+    <div class="desc" id="levelDesc"><div class="desc-meta" id="levelMeta"></div><p id="levelText"></p></div>
+    <div class="hints menu-hints"><span><kbd>Click</kbd>OK</span><span><kbd>Esc</kbd>Back</span></div>
+  </div>
+
+  <div id="loadout" class="screen hidden pick">
+    <div class="pick-head"><button class="back" data-back>‹</button><span class="wordmark">Loadout</span></div>
+    <div class="cards" id="loadCards"></div>
+    <div class="desc" id="loadDesc"><div class="desc-meta" id="loadMeta"></div><p id="loadText"></p></div>
+    <div class="hints menu-hints"><span><kbd>Click</kbd>Fly</span><span><kbd>Esc</kbd>Back</span></div>
+  </div>
+
+  <div id="rooms" class="screen hidden">
+    <div class="panel">
+      <div class="panel-head"><button class="back" data-back>‹</button><span class="wordmark">Versus</span></div>
+      <label class="field"><span>Your name</span><input id="nameIn" maxlength="14" autocomplete="off" /></label>
+      <button class="opt coral sel" id="createRoom">Create a room</button>
+      <hr />
+      <label class="field"><span>Room code</span><input id="codeIn" maxlength="4" placeholder="ABCD" autocomplete="off" /></label>
+      <button class="opt violet" id="joinRoom">Join</button>
+    </div>
+    <div class="desc in"><div class="desc-meta"><span>2 to 4 players</span></div><p>Create a room and send the invite link to your friends, or type the four-letter code a friend gave you. Coral and Violet each have two seats, and the host can fill empty seats with bots.</p></div>
+  </div>
+
+  <div id="lobby" class="screen hidden">
+    <div class="pick-head"><button class="back" id="leaveRoom">‹</button><span class="wordmark">Room</span><b class="code" id="roomCode">····</b><button class="mini light" id="copyLink">Copy invite link</button></div>
+    <div class="teams">
+      <div class="team t0"><h3>Coral</h3><div id="seatsA"></div></div>
+      <div class="team t1"><h3>Violet</h3><div id="seatsB"></div></div>
+    </div>
+    <div class="roles" id="rolePick"></div>
+    <div class="lobby-foot"><p id="lobbyNote"></p><button class="opt grey" id="fillBots">Fill empty seats with bots</button><button class="opt coral sel" id="startMatch">Start</button></div>
+  </div>
+
+  <div id="pause" class="screen hidden">
+    <div class="panel small">
+      <div class="panel-head"><span class="wordmark">Paused</span></div>
+      <button class="opt coral sel" id="resume">Resume</button>
+      <button class="opt grey" id="quit">Modes</button>
+      <hr />
+      <div class="credit">
+        <p>Music: <a href="https://www.silvermansound.com" target="_blank" rel="noopener">Slam by Shane Ivers</a></p>
+        <p>Royalty-free music from <a href="https://www.free-stock-music.com" target="_blank" rel="noopener">free-stock-music.com</a></p>
+        <p>Licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">Creative Commons Attribution 4.0 (CC BY 4.0)</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="result" class="screen hidden">
+    <div class="result-title"><span>Result</span></div>
+    <div class="result-body">
+      <div class="stars" id="rStars"></div>
+      <div class="badge"><b id="rBig">0</b><span id="rUnit">points</span><em id="rRecord">New record!</em></div>
+      <div class="table"><div class="head" id="rHead"></div><div class="row" id="rRow"></div><div id="rRows"></div></div>
+      <div class="actions"><button class="opt coral sel" id="again">Fly again</button><button class="opt grey" id="modes">Modes</button></div>
+    </div>
+  </div>
+
+  <button class="mute" id="mute" aria-label="Mute"></button>
+  <div id="wipe"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
