@@ -462,10 +462,17 @@ function frameOffset() {
   else camera.clearViewOffset();
 }
 
-function orbitCamera() {
+// intro: after loading, the camera falls from high above the sea into the title shot
+const INTRO = 2.2;
+function orbitCamera(rdt = 0) {
   const a = S.t * 0.11, r = 15 + G.coreCount ** (1 / 3) * 0.9;
   camPos.set(Math.sin(a) * r, 5 + Math.sin(S.t * 0.23) * 3, Math.cos(a) * r);
-  camera.position.copy(camPos);
+  if (S.intro > 0) {
+    S.intro = Math.max(0, S.intro - rdt);
+    const k = 1 - S.intro / INTRO, e = 1 - (1 - k) ** 4;
+    const from = camPos.clone().multiplyScalar(3.4).setY(70);
+    camera.position.lerpVectors(from, camPos, e);
+  } else camera.position.copy(camPos);
   camera.lookAt(0, -1.5, 0);
   if (camera.fov !== 68) { camera.fov = 68; camera.updateProjectionMatrix(); }
 }
@@ -914,9 +921,9 @@ function frame(rdt) {
     if (S.mode === 'title') {
       // the attract loop seals two layers, lets the second land, then starts over
       if (S.sealed >= 2) { attractReset += dt; if (attractReset > 3) { attractReset = 0; newRound('survival'); } }
-      autopilot(dt); orbitCamera();
+      autopilot(dt); orbitCamera(rdt);
     } else if (S.mode === 'play' || (S.mode === 'pause' && S.game === 'versus')) play(dt);
-    else orbitCamera();
+    else orbitCamera(rdt);
     updateShots(dt);
     FX.update(dt);
     B.update(S.t);
@@ -971,22 +978,26 @@ newRound();
 if (params.has('watch')) { S.auto = true; newRound(startGame); setMode('play'); $('loading').classList.add('hidden'); }
 else {
   setMode('title', 'splash');
-  // timers, not rAF: a backgrounded tab must still finish loading
-  const t0 = performance.now(), MIN = 1500;
+  // The letters run on their own fixed beat (CSS), so a busy main thread
+  // can't bunch them up. Shader warm-up happens behind them; the exit waits
+  // for both the beat and the warm-up. Timers, not rAF, so a backgrounded
+  // tab still finishes.
+  const L = $('loading'), BEAT = 2050;
+  let warm = false;
   setTimeout(() => {
-    warmUp();
-    const fill = setInterval(() => {
-      const k = Math.min(1, (performance.now() - t0) / MIN);
-      HUD.loading(0.15 + k * 0.85);
-      if (k < 1) return;
-      clearInterval(fill);
-      $('loading').classList.add('out');
-      $('splash').classList.add('enter');
-      setTimeout(() => $('loading').classList.add('hidden'), 480);
-      // an invite link drops you straight into the room
-      if (params.get('room')) { V.join(params.get('room')); toLobby(); }
-    }, 30);
+    L.classList.add('go');
+    setTimeout(() => { warmUp(); warm = true; }, 160);
   }, 30);
+  const exit = () => {
+    if (!warm) return setTimeout(exit, 40);
+    L.classList.add('exit');
+    S.intro = INTRO;
+    setTimeout(() => $('splash').classList.add('enter'), 750);
+    setTimeout(() => L.classList.add('hidden'), 1150);
+    // an invite link drops you straight into the room
+    if (params.get('room')) { V.join(params.get('room')); toLobby(); }
+  };
+  setTimeout(exit, BEAT);
 }
 requestAnimationFrame(tick);
 

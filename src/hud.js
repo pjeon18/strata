@@ -27,12 +27,6 @@ export const ICON = {
   bot: '<svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="4"/><circle cx="9" cy="13" r="1.8" fill="#fff"/><circle cx="15" cy="13" r="1.8" fill="#fff"/><path d="M12 7V3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
-// ---------- loading ----------
-// loading spells the name: one more letter pops in for each sixth of progress
-export function loading(frac) {
-  const n = Math.min(6, Math.floor(frac * 6.2) + 1);
-  [...$('loadWord').children].forEach((el, k) => el.classList.toggle('on', k < n));
-}
 // soft red haze around the edges when the core is one hit from losing
 export const danger = on => $('danger').classList.toggle('on', !!on);
 

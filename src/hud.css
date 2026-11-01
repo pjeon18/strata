@@ -223,15 +223,34 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 .panel-head .wordmark { font-size: 46px; }
 
 /* loading */
-#loading { z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: radial-gradient(60% 60% at 30% 30%, #ffe3ef, transparent 70%), radial-gradient(50% 60% at 75% 70%, #dcd6ff, transparent 70%), radial-gradient(40% 50% at 60% 20%, #d3f6ee, transparent 70%), #fbfbff;
-  transition: opacity .45s var(--out); }
-#loading.out { opacity: 0; pointer-events: none; }
-.load-word { display: flex; gap: .02em; font-size: clamp(100px, 15vw, 190px); font-weight: 900; letter-spacing: .02em; color: #2a6ff0;
-  text-shadow: 0 2px 0 #a9c8f7, 0 4px 0 #97bbf3, 0 6px 0 #85aef0, 0 9px 3px rgba(30, 60, 140, .2), 0 18px 26px rgba(30, 60, 140, .18); }
-.load-word i { display: inline-block; font-style: normal; opacity: 0; transform: translateY(30px) scale(.4); }
-.load-word i.on { animation: pop .42s var(--spring) forwards; }
-@keyframes pop { to { opacity: 1; transform: none; } }
+/* The loading scene: the name lands one letter at a time on a fixed beat,
+   the "!" lands last with a bigger bounce, then the letters lift away and a
+   feathered circle opens from the centre onto the world. */
+@property --r { syntax: '<length>'; inherits: false; initial-value: 0px; }
+#loading { z-index: 20; display: flex; align-items: center; justify-content: center; perspective: 900px; }
+#loading::before { content: ''; position: absolute; inset: -10%;
+  background: radial-gradient(60% 60% at 30% 30%, #ffe3ef, transparent 70%), radial-gradient(50% 60% at 75% 70%, #dcd6ff, transparent 70%),
+    radial-gradient(40% 50% at 60% 20%, #d3f6ee, transparent 70%), #fbfbff;
+  animation: drift 7s ease-in-out infinite alternate;
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent var(--r), #000 calc(var(--r) + 80px));
+  mask: radial-gradient(circle at 50% 50%, transparent var(--r), #000 calc(var(--r) + 80px)); }
+@keyframes drift { to { transform: translate(3%, -2%) scale(1.06); } }
+#loading.exit::before { animation: drift 7s ease-in-out infinite alternate, iris .9s cubic-bezier(.7, 0, .2, 1) .12s forwards; }
+@keyframes iris { to { --r: 130vmax; } }
+.load-word { position: relative; display: flex; font-size: clamp(110px, 16vw, 200px); font-weight: 900; letter-spacing: .01em; color: #2a6ff0;
+  text-shadow: 0 2px 0 #a9c8f7, 0 4px 0 #97bbf3, 0 6px 0 #85aef0, 0 9px 3px rgba(30, 60, 140, .2), 0 20px 28px rgba(30, 60, 140, .18); }
+.load-word i { display: inline-block; font-style: normal; opacity: 0; transform-origin: 50% 90%; transform: translateY(46px) rotateX(70deg) scale(.6); }
+.load-word i.bang { color: #ff5a3d; text-shadow: 0 2px 0 #ffc2a8, 0 4px 0 #ffad8c, 0 6px 0 #ff9870, 0 9px 3px rgba(160, 50, 20, .2), 0 20px 28px rgba(160, 50, 20, .18); margin-left: .04em; }
+#loading.go .load-word i { animation: land .52s var(--spring) forwards; animation-delay: calc(.12s + var(--k) * .17s); }
+#loading.go .load-word i.bang { animation: bang .62s var(--spring) forwards; animation-delay: 1.24s; }
+@keyframes land { to { opacity: 1; transform: none; } }
+@keyframes bang { 0% { opacity: 0; transform: translateY(-120px) scale(.6) rotate(-14deg); } 55% { opacity: 1; transform: translateY(8px) scale(1.25) rotate(6deg); } 100% { opacity: 1; transform: none; } }
+/* the word hops once when the "!" lands */
+#loading.go .load-word { animation: hopWord .5s var(--spring) 1.5s; }
+@keyframes hopWord { 40% { transform: translateY(-12px) scale(1.03); } }
+/* exit: letters lift off left to right and fade as the circle opens */
+#loading.exit .load-word i, #loading.exit .load-word i.bang { opacity: 1; transform: none; animation: liftOff .45s cubic-bezier(.5, 0, .9, .4) forwards; animation-delay: calc(var(--k) * .035s); }
+@keyframes liftOff { to { opacity: 0; transform: translateY(-70px) scale(1.08); filter: blur(4px); } }
 
 /* mute: always reachable, bottom-left */
 .mute { position: fixed; left: 20px; bottom: 18px; width: 44px; height: 44px; border-radius: 50%; border: 0; padding: 10px; background: rgba(255,255,255,.95); color: var(--navy-solid);
