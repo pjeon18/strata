@@ -39,7 +39,8 @@ scene.add(B.group, FX.group, T.group, Items.group);
 const ghosts = Array.from({ length: 9 }, () => { const g = fxOnly(B.ghost()); g.visible = false; scene.add(g); return g; });
 const showGhost = cells => ghosts.forEach((g, k) => { g.visible = !!cells[k]; if (cells[k]) g.position.set(...cells[k]); });
 
-// last-faces beacons: when a layer is nearly closed, show the gaps through everything
+// last-faces beacons: when a layer is nearly closed, show the gaps through everything.
+// Same threshold as the "Almost sealed" tab, so layer 1 lights only its last two.
 const beaconMat = new THREE.MeshBasicMaterial({ color: PAL.orange, depthTest: false, transparent: true });
 const beaconGeo = new THREE.RingGeometry(0.28, 0.42, 24);
 const beacons = Array.from({ length: 8 }, () => { const m = fxOnly(new THREE.Mesh(beaconGeo, beaconMat)); m.renderOrder = 20; m.visible = false; scene.add(m); return m; });
@@ -47,7 +48,7 @@ const beacons = Array.from({ length: 8 }, () => { const m = fxOnly(new THREE.Mes
 const nearly = () => Math.min(8, Math.ceil(S.a.totalFaces / 4));
 const NOWHERE = new THREE.Vector3(0, -9999, 0);
 function updateBeacons(t) {
-  const faces = S.mode === 'play' && S.a && S.a.exposedFaces <= 8 ? S.a.faces : [];
+  const faces = S.mode === 'play' && S.a && S.a.exposedFaces <= nearly() ? S.a.faces : [];
   beaconMat.opacity = 0.75 + 0.25 * Math.sin(t * 8);
   beacons.forEach((m, k) => {
     const f = faces[k];
@@ -969,7 +970,7 @@ const TUTORIAL = [
   { text: 'Move the mouse to look around.', keys: ['Mouse'], done: u => u.turned > 1.4 },
   { text: 'Fly with W, A, S and D. Space climbs and Shift drops.', keys: ['W', 'A', 'S', 'D', 'Space', 'Shift'], done: u => u.flown > 7 },
   { text: 'Point at the core and left-click to stick a block on it.', keys: ['Left click'], done: u => u.placed > 0 || S.sealed > 0 },
-  { text: 'Cover every face the orange rings mark. When no sky can reach the core, the layer seals.', keys: ['Left click'], done: () => S.sealed > 0 },
+  { text: 'Cover all six faces of the core. When no sky can reach it, the layer seals. Orange rings mark the last gaps.', keys: ['Left click'], done: () => S.sealed > 0 },
   { text: 'Press Q to dash. While you dash, meteors and shots pass straight through you.', keys: ['Q'], done: u => u.dashes > 0 },
   { text: 'Double-tap D to swoop round to the next face. Double-tap Space to swoop over the top.', keys: ['D D', 'Space Space'], done: u => u.swoops > 0 },
   { text: 'A meteor is falling toward the core. Follow the arrow and right-click to blast it.', keys: ['Right click'], enter: () => T.spawnMeteor(5, 'slow'), done: () => S.meteorsDown > 0 },
