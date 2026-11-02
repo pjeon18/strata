@@ -473,3 +473,16 @@ went down, within 0.3 seconds, so a slow frame can't split one. Paul's
 halfway stop is left out for now: on single taps it would fire whenever you
 nudge sideways, and halfway leaves you on an edge where neither face is
 square to you. The tutorial gained a swoop step (seven steps now).
+
+**D22 notes: the water.** Paul (2026-11-02) found the look washed out. We
+compared concept sheets (`assets/strata-look/`): graded, graded with cel
+shading, and graded with cel shading and ink. He turned down both the grade
+and cel shading, and kept the original fog and lighting. What ships is a
+slight saturation lift on the finished frame (×1.08, nothing else) and a
+rebuilt sea. The old sea had large dark reef blotches that read as uneven
+shadows, and wide green-teal halos round every island. The new sea is one
+even body of water: deep blue looking down, lighter and sky-tinted toward
+the horizon. Two layers of small drifting ripples catch sun glints up close
+and fade out with distance, so far water stays calm instead of shimmering.
+The shoreline is narrow: about 9 units of shallows, a sandy rim and a thin
+foam line that follows the same wobble as the island mesh and moves gently.

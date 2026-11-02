@@ -253,11 +253,13 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
   background: radial-gradient(60% 60% at 30% 30%, #ffe3ef, transparent 70%), radial-gradient(50% 60% at 75% 70%, #dcd6ff, transparent 70%),
     radial-gradient(40% 50% at 60% 20%, #d3f6ee, transparent 70%), #fbfbff;
   animation: drift 7s ease-in-out infinite alternate;
-  -webkit-mask: radial-gradient(circle at 50% 50%, transparent var(--r), #000 calc(var(--r) + 80px));
-  mask: radial-gradient(circle at 50% 50%, transparent var(--r), #000 calc(var(--r) + 80px)); }
+  /* the feather sits inside the radius, so at r = 0 the cover is fully solid
+     and nothing of the world shows until the circle starts to open */
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent calc(var(--r) - 80px), #000 var(--r));
+  mask: radial-gradient(circle at 50% 50%, transparent calc(var(--r) - 80px), #000 var(--r)); }
 @keyframes drift { to { transform: translate(3%, -2%) scale(1.06); } }
 #loading.exit::before { animation: drift 7s ease-in-out infinite alternate, iris .9s cubic-bezier(.7, 0, .2, 1) .12s forwards; }
-@keyframes iris { to { --r: 130vmax; } }
+@keyframes iris { to { --r: calc(130vmax + 80px); } }
 .load-word { position: relative; display: flex; font-size: clamp(110px, 16vw, 200px); font-weight: 900; letter-spacing: .01em; color: #2a6ff0;
   text-shadow: 0 2px 0 #a9c8f7, 0 4px 0 #97bbf3, 0 6px 0 #85aef0, 0 9px 3px rgba(30, 60, 140, .2), 0 20px 28px rgba(30, 60, 140, .18); }
 .load-word i { display: inline-block; font-style: normal; opacity: 0; transform-origin: 50% 90%; transform: translateY(46px) rotateX(70deg) scale(.6); }

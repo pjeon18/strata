@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 
 // Resort look: clean soft shading with a rim sheen, saturated sky and sea,
 // haze toward the horizon, a little bloom on whites and glows. No ink lines.
@@ -42,6 +43,15 @@ export function paint(color, o = {}) {
 export const FX_LAYER = 1;
 export const fxOnly = obj => { obj.layers.set(FX_LAYER); obj.traverse(c => c.layers.set(FX_LAYER)); return obj; };
 
+// a slight saturation lift on the finished frame, nothing else
+const VIVID = {
+  uniforms: { tDiffuse: { value: null }, sat: { value: 1.08 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float sat; varying vec2 vUv;
+    void main(){ vec3 c = texture2D(tDiffuse, vUv).rgb;
+      gl_FragColor = vec4(clamp(mix(vec3(dot(c, vec3(.2126, .7152, .0722))), c, sat), 0., 1.), 1.); }`,
+};
+
 export class Post {
   constructor(renderer, scene, camera) {
     this.c = new EffectComposer(renderer);
@@ -49,6 +59,7 @@ export class Post {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.3, 0.5, 1.0);
     this.c.addPass(this.bloom);
     this.c.addPass(new OutputPass());
+    this.c.addPass(new ShaderPass(VIVID));
   }
   setSize(w, h, dpr) { this.c.setPixelRatio(dpr); this.c.setSize(w, h); }
   render(scene, camera) { camera.layers.enableAll(); this.c.render(); }
@@ -82,12 +93,17 @@ const SEA_Y = -70;
 // islands: [x, z, radius, peak height]
 const ISLES = [[-150, -320, 70, 70], [70, -260, 26, 14], [-280, -150, 34, 20], [230, -330, 44, 30], [160, -140, 16, 7], [-40, -180, 14, 6], [300, 40, 30, 16], [-260, 160, 40, 26]];
 
+// The sea: one even body of water. Deeper blue looking down, lighter toward
+// the horizon, fine moving ripples that catch the sun up close, and a narrow
+// clean shoreline (shallows, then a thin foam line) that follows each island.
 export function sea() {
   const isl = ISLES.map(([x, z, r]) => new THREE.Vector3(x, z, r));
   const mat = new THREE.ShaderMaterial({
     fog: true,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       deep: { value: new THREE.Color(PAL.deep) }, sea: { value: new THREE.Color(PAL.sea) }, shallow: { value: new THREE.Color(PAL.shallow) },
+      far: { value: new THREE.Color(PAL.skyMid) }, sand: { value: new THREE.Color(PAL.sand) },
+      sunDir: { value: new THREE.Vector3(18, 30, 12).normalize() },
       t: { value: 0 }, isl: { value: isl },
     }]),
     vertexShader: `varying vec3 vW;
@@ -95,19 +111,41 @@ export function sea() {
       void main(){ vec4 w = modelMatrix * vec4(position, 1.); vW = w.xyz; vec4 mvPosition = viewMatrix * w; gl_Position = projectionMatrix * mvPosition;
       #include <fog_vertex>
       }`,
-    fragmentShader: `uniform vec3 deep, sea, shallow; uniform float t; uniform vec3 isl[${isl.length}]; varying vec3 vW;
+    fragmentShader: `uniform vec3 deep, sea, shallow, far, sand, sunDir; uniform float t; uniform vec3 isl[${isl.length}]; varying vec3 vW;
       #include <fog_pars_fragment>
       float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
         return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+      // ripple height: two drifting layers of small noise
+      float wave(vec2 p){ return n(p * .35 + vec2(t * .35, t * .12)) * .6 + n(p * .9 - vec2(t * .2, t * .45)) * .4; }
       void main(){
         vec2 p = vW.xz;
-        float d = 1e5;
-        for (int k = 0; k < ${isl.length}; k++) d = min(d, length(p - isl[k].xy) - isl[k].z);
-        float blot = n(p * .012) * .6 + n(p * .04) * .4;           // dark reef patches
-        vec3 c = mix(sea, deep, smoothstep(.45, .75, blot));
-        c = mix(c, shallow, smoothstep(40., 2., d));
-        c = mix(c, vec3(1.), smoothstep(2.5, .5, d) * .7);         // surf line
+        vec3 V = normalize(cameraPosition - vW);
+        float dist = length(cameraPosition - vW);
+        // ripples fade out with distance so far water stays calm instead of shimmering
+        float near = 1. - smoothstep(50., 420., dist);
+        float e = .25, w0 = wave(p);
+        vec3 N = normalize(vec3((w0 - wave(p + vec2(e, 0.))) * near * .9, 1., (w0 - wave(p + vec2(0., e))) * near * .9));
+        // body colour: deep when looking down, lighter and sky-tinted toward the horizon
+        float grazing = pow(1. - clamp(V.y, 0., 1.), 4.);
+        vec3 c = mix(mix(deep, sea, .62), mix(sea, far, .5), grazing);
+        c *= 1. + (w0 - .5) * .07 * near;
+        // shoreline: follows the same wobble as the island meshes
+        float d = 1e5, ang = 0.;
+        for (int k = 0; k < ${isl.length}; k++) {
+          vec2 q = p - isl[k].xy; float a = atan(q.y, q.x);
+          float r = isl[k].z * 1.027 * (1. + sin(a * 3. + isl[k].z) * .08 + sin(a * 7. + isl[k].x) * .04);
+          float dk = length(q) - r;
+          if (dk < d) { d = dk; ang = a; }
+        }
+        c = mix(c, shallow, smoothstep(9., 0., d) * .55);
+        c = mix(c, mix(shallow, sand, .35), smoothstep(2.2, 0., d) * .5);
+        float foam = smoothstep(.9, .15, abs(d - .7 - .35 * sin(t * 1.3 + ang * 9.)));
+        c = mix(c, vec3(1.), foam * .8);
+        // sun glints on the ripples, and a broad soft sheen toward the sun
+        vec3 H = normalize(sunDir + V);
+        c += vec3(1., .97, .9) * pow(max(dot(N, H), 0.), 220.) * 1.3;
+        c += vec3(1., .96, .88) * pow(max(H.y, 0.), 60.) * .22;
         gl_FragColor = vec4(c, 1.);
         #include <colorspace_fragment>
         #include <fog_fragment>
