@@ -15,6 +15,9 @@ export const KINDS = {
 const rockGeo = new THREE.DodecahedronGeometry(1, 0);
 const rockMats = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, paint(v.color, { roughness: 0.75, rim: 0.3 })]));
 const markGeo = new THREE.RingGeometry(0.5, 0.6, 40);
+// a hit rock goes pure white for a couple of frames
+const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const flash = o => { o.m.material = flashMat; o.flash = 0.07; };
 const BLINK_ETA = 1.6; // seconds out when the ring starts blinking
 
 export const group = new THREE.Group();
@@ -78,6 +81,7 @@ export function update(dt, t, hooks, shipPos, onShipHit) {
     o.pos.addScaledVector(o.vel, dt);
     o.m.position.copy(o.pos);
     o.m.rotateOnAxis(o.spin, dt * 2.5);
+    if (o.flash > 0 && (o.flash -= dt) <= 0) o.m.material = rockMats[o.kind];
     // still while far; blinks once impact is close
     const eta = o.pos.distanceTo(o.target) / o.vel.length();
     o.eta = eta;
@@ -138,7 +142,7 @@ export function hitTest(p, r, onKill) {
   for (let k = meteors.length - 1; k >= 0; k--) {
     const o = meteors[k];
     if (o.pos.distanceTo(p) < r + o.K.r) {
-      o.hp--; FX.burst(p, o.K.color, 6, 6, 0.25); o.m.scale.setScalar(o.K.r * (0.65 + 0.35 * o.hp / o.K.hp));
+      o.hp--; flash(o); FX.burst(p, o.K.color, 6, 6, 0.25); o.m.scale.setScalar(o.K.r * (0.65 + 0.35 * o.hp / o.K.hp));
       if (o.hp <= 0) { onKill('meteor', o.pos.clone()); kill(meteors, k); }
       return true;
     }
@@ -156,7 +160,7 @@ export function laserHits(a, b, dmg, onKill) {
   for (let k = meteors.length - 1; k >= 0; k--) {
     const o = meteors[k];
     if (segDist(o.pos, a, b) > o.K.r + 0.35) continue;
-    o.hp -= dmg; FX.burst(o.pos, o.K.color, 8, 7, 0.25);
+    o.hp -= dmg; flash(o); FX.burst(o.pos, o.K.color, 8, 7, 0.25);
     if (o.hp <= 0) { onKill('meteor', o.pos.clone()); kill(meteors, k); } else o.m.scale.setScalar(o.K.r * (0.65 + 0.35 * o.hp / o.K.hp));
   }
   for (let k = drones.length - 1; k >= 0; k--) {
@@ -171,7 +175,7 @@ export function areaHit(p, r, dmg, onKill) {
   for (let k = meteors.length - 1; k >= 0; k--) {
     const o = meteors[k];
     if (o.pos.distanceTo(p) > r + o.K.r) continue;
-    o.hp -= dmg;
+    o.hp -= dmg; flash(o);
     if (o.hp <= 0) { onKill('meteor', o.pos.clone()); kill(meteors, k); } else o.m.scale.setScalar(o.K.r * (0.65 + 0.35 * o.hp / o.K.hp));
   }
   for (let k = drones.length - 1; k >= 0; k--) {

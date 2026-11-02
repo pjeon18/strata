@@ -72,6 +72,27 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 .cross.on { border-color: var(--mint); transform: scale(1.08); }
 .cross.on i { background: var(--mint); }
 .cross.kick { animation: kick .14s var(--out); }
+/* hit markers: four ticks snap out and fade; a kill is bigger and coral */
+.cross .hm { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; overflow: visible; opacity: 0; pointer-events: none; }
+.cross .hm path { stroke: #fff; stroke-width: 3.2; stroke-linecap: round; fill: none; filter: drop-shadow(0 1px 2px rgba(20,40,90,.45)); }
+.cross.hit .hm { animation: hm .2s var(--out); }
+.cross.killed .hm { animation: hmKill .38s var(--out); }
+.cross.killed .hm path { stroke: var(--coral-a); stroke-width: 4; }
+@keyframes hm { 0% { opacity: 1; transform: scale(.7); } 40% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0; transform: scale(1.15); } }
+@keyframes hmKill { 0% { opacity: 1; transform: scale(.6) rotate(-8deg); } 30% { opacity: 1; transform: scale(1.35) rotate(0); } 100% { opacity: 0; transform: scale(1.5); } }
+/* a word that rises out of the crosshair and fades */
+.pop { position: absolute; left: 50%; top: calc(50% + 50px); transform: translateX(-50%); font-weight: 900; font-size: 20px; color: #fff; opacity: 0; pointer-events: none;
+  text-shadow: 0 2px 8px rgba(20, 60, 120, .45); letter-spacing: .02em; white-space: nowrap; }
+.pop.on { animation: popWord .9s var(--out) forwards; }
+@keyframes popWord { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); } 18% { opacity: 1; transform: translate(-50%, 0) scale(1.06); } 70% { opacity: 1; transform: translate(-50%, -6px) scale(1); } 100% { opacity: 0; transform: translate(-50%, -14px) scale(1); } }
+/* dash charges: two short arcs on the left, mirroring the ammo arc */
+.cross .dash { position: absolute; left: 50%; top: 50%; width: 78px; height: 78px; margin: -39px 0 0 -39px; overflow: visible; fill: none; }
+.dash path { stroke-width: 5; stroke-linecap: round; fill: none; }
+.dash .bg { stroke: rgba(255,255,255,.35); }
+.dash .fg { stroke: #fff; filter: drop-shadow(0 1px 2px rgba(20,40,90,.4)); stroke-dasharray: 49; transition: stroke .2s; }
+.dash .fg.full { stroke: #8fe3ff; }
+.dash .fg.pop { animation: dashPop .3s var(--spring); }
+@keyframes dashPop { 0% { stroke-width: 9; } 100% { stroke-width: 5; } }
 @keyframes kick { 0% { transform: scale(.78); } 100% { transform: scale(1); } }
 
 #arrows .arrow { position: absolute; width: 34px; height: 30px; background: linear-gradient(180deg, var(--coral-a), var(--coral-b));
@@ -404,5 +425,11 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 /* danger: a soft red haze breathing at the edges of the screen */
 #danger { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .9s var(--out);
   background: radial-gradient(ellipse 72% 66% at center, transparent 50%, rgba(255, 60, 80, .2) 76%, rgba(240, 30, 60, .5) 100%); }
+/* a hit: white-out from the side it came from, gone in about half a second */
+#hurt { position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse 70% 70% at var(--x, 50%) var(--y, 50%), rgba(255,255,255,0) 30%, rgba(255,120,110,.5) 70%, rgba(255,240,235,.9) 100%),
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(255,255,255,.55) 100%); }
+#hurt.on { animation: hurt .6s var(--out) forwards; }
+@keyframes hurt { 0% { opacity: 1; } 100% { opacity: 0; } }
 #danger.on { opacity: 1; animation: breatheRed 2.6s ease-in-out infinite; }
 @keyframes breatheRed { 50% { opacity: .55; } }

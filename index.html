@@ -10,6 +10,7 @@
   <canvas id="c"></canvas>
   <div id="flash"></div>
   <div id="danger"></div>
+  <div id="hurt"></div>
 
   <div id="hud" class="hidden">
     <div id="labels"></div>
@@ -31,8 +32,11 @@
     <canvas class="radar" id="radar"></canvas>
     <div class="cross" id="cross">
       <svg class="ammo" viewBox="0 0 80 80"><path class="bg" d="M40 6 A34 34 0 0 1 40 74"/><path class="fg" id="ammoFg" d="M40 6 A34 34 0 0 1 40 74"/></svg>
+      <svg class="dash" viewBox="0 0 80 80"><path class="bg" d="M37 6.1 A34 34 0 0 0 6.1 37"/><path class="fg" id="dash0" d="M37 6.1 A34 34 0 0 0 6.1 37"/><path class="bg" d="M6.1 43 A34 34 0 0 0 37 73.9"/><path class="fg" id="dash1" d="M6.1 43 A34 34 0 0 0 37 73.9"/></svg>
+      <svg class="hm" viewBox="0 0 40 40"><path d="M8 8 L14 14 M32 8 L26 14 M8 32 L14 26 M32 32 L26 26"/></svg>
       <i></i>
     </div>
+    <div class="pop" id="pop"></div>
     <div id="arrows"></div>
     <div class="slot" id="slot"><div class="bubble" id="slotIcon"></div><kbd>E</kbd><span class="slot-name" id="slotName">Empty</span></div>
     <div class="effects" id="effects"></div>

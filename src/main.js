@@ -10,11 +10,11 @@ import * as T from './threats.js';
 import * as Items from './items.js';
 import * as AI from './builder.js';
 import { PAL, Post, sky, sea, islands, clouds, lights, fxOnly, paint } from './look.js';
-import { buildShip, Pilot } from './ship.js';
-import { sfx, isMuted, setMuted, startMusic, musicLevel, musicState } from './audio.js';
+import { buildShip, Pilot, DASH, flashShip, updateFlashes } from './ship.js';
+import { sfx, isMuted, setMuted, startMusic, musicLevel, musicState, muffle } from './audio.js';
 import { LEVELS, pickKind, starsFor, bestStars, saveStars } from './levels.js';
-import { LOADOUTS, Energy, pattern } from './weapons.js';
-import { createVersus, TEAM, teamOf } from './versus.js';
+import { LOADOUTS, Energy, pattern, tempo } from './weapons.js';
+import { createVersus, TEAM, teamOf, IMMUNE } from './versus.js';
 
 // ---------- scene ----------
 const canvas = document.getElementById('c');
@@ -42,6 +42,9 @@ const showGhost = cells => ghosts.forEach((g, k) => { g.visible = !!cells[k]; if
 const beaconMat = new THREE.MeshBasicMaterial({ color: PAL.orange, depthTest: false, transparent: true });
 const beaconGeo = new THREE.RingGeometry(0.28, 0.42, 24);
 const beacons = Array.from({ length: 8 }, () => { const m = fxOnly(new THREE.Mesh(beaconGeo, beaconMat)); m.renderOrder = 20; m.visible = false; scene.add(m); return m; });
+// "almost sealed": a quarter of the faces left, at most 8 (layer 1 has only 6)
+const nearly = () => Math.min(8, Math.ceil(S.a.totalFaces / 4));
+const NOWHERE = new THREE.Vector3(0, -9999, 0);
 function updateBeacons(t) {
   const faces = S.mode === 'play' && S.a && S.a.exposedFaces <= 8 ? S.a.faces : [];
   beaconMat.opacity = 0.75 + 0.25 * Math.sin(t * 8);
@@ -76,7 +79,7 @@ addEventListener('resize', resize);
 // ---------- state ----------
 const S = {
   mode: 'title', screen: 'splash', game: 'survival', level: LEVELS[0], loadout: 'rapid', auto: false,
-  t: 0, slow: 0, shake: 0, flash: 0, ending: 0,
+  t: 0, slow: 0, shake: 0, flash: 0, ending: 0, stop: 0, immune: 0, dodged: false, lastStop: 0, kick: new THREE.Vector3(), fovKick: 0, kills: 0, dashN: 2,
   score: 0, shown: 0, layer: 1, sealed: 0, integrity: 3, cemented: 0, meteorsDown: 0,
   crit: 0, time: 0, downed: 0, botT: 0, cleared: 0,
   left: 0, waveT: 0, wave: 0, queue: [], droneT: 0, itemT: 0,
@@ -90,6 +93,42 @@ const pending = new Set();
 const $ = id => document.getElementById(id);
 resize();
 
+// ---------- feel ----------
+// Hit-stop freezes the world for a few frames so a hit lands. Small ones are
+// rate-limited, so a stream of breaks doesn't stutter.
+function hitstop(t, minor = false) {
+  const now = performance.now();
+  if (minor && now - S.lastStop < 140) return;
+  S.stop = Math.max(S.stop, t); S.lastStop = now;
+}
+// your shot connected: a tick and a marker, or a bigger one for a kill
+function confirmHit(killed) {
+  if (S.mode !== 'play' || S.auto) return;
+  HUD.hitMark(killed ? 'killed' : 'hit');
+  if (killed) sfx.kill(); else sfx.hit();
+  hitstop(killed ? 0.065 : 0.035, !killed);
+  S.shake = Math.max(S.shake, killed ? 0.3 : 0.12);
+}
+// you got hit: freeze, the plane flashes white, the screen whites out from
+// that side, a shove away from it, and the sound goes underwater
+function hurtMe(from, power = 1) {
+  hitstop(0.1 * power);
+  S.flash = Math.max(S.flash, 0.5 * power); S.shake = Math.max(S.shake, 0.85 * power);
+  S.kick.addScaledVector(pilot.pos.clone().sub(from).normalize(), 0.6 * power);
+  flashShip(pilot.mesh, 0.16);
+  const v = from.clone().applyMatrix4(camera.matrixWorldInverse), d = Math.hypot(v.x, v.y) || 1;
+  HUD.hurt(v.x / d, -v.y / d);
+  FX.burst(pilot.pos, 0xffffff, 10, 8, 0.18);
+  sfx.hurt(); muffle(0.5 + 0.3 * power);
+}
+// the gun's own kick: a white muzzle pop and a nudge of the camera
+function muzzle(from, size, recoil) {
+  FX.dot(from, 0xffffff, size, 0.07);
+  S.kick.addScaledVector(F, -recoil);
+  S.fovKick -= recoil * 6;
+}
+const mine = seat => seat == null || seat < 0 || seat === S.seat;
+
 function reanalyze() {
   S.a = G.analyze();
   // versus guests never seal on their own: the host's seal op decides
@@ -100,13 +139,15 @@ function reanalyze() {
 
 function newRound(game = S.game) {
   S.game = game;
-  G.reset(3);
+  G.reset(1);
   clearBots();
   for (const s of shots) scene.remove(s.m);
   shots.length = 0; pending.clear();
   T.clear(); FX.clear(); Items.clear();
   const L = S.level;
-  Object.assign(S, { score: 0, shown: 0, layer: 1, sealed: 0, integrity: 3, slow: 0, shake: 0, flash: 0, ending: 0,
+  S.kick.set(0, 0, 0);
+  pilot.mesh.visible = true;
+  Object.assign(S, { score: 0, shown: 0, layer: 1, sealed: 0, integrity: 3, slow: 0, shake: 0, flash: 0, ending: 0, stop: 0, fovKick: 0, dashN: 2, immune: 0,
     crit: 0, time: 0, downed: 0, botT: 35, cemented: 0, meteorsDown: 0, cleared: 0,
     left: L.time, waveT: L.firstWave, wave: 0, queue: [], droneT: 0, itemT: 8,
     held: null, fx: { big: 0, boost: 0, shield: 0 } });
@@ -115,8 +156,9 @@ function newRound(game = S.game) {
   if (game !== 'versus') { recolorShip(-1); HUD.versusHud(false); }
   hudGame();
   yaw = 0; pitch = 0;
-  pilot.reset(new THREE.Vector3(0, 1, 11), new THREE.Vector3(0, 0, -1));
-  camPos.set(0, 2.5, 16);
+  // start close: the first core is a single block
+  pilot.reset(new THREE.Vector3(0, 1, 7.5), new THREE.Vector3(0, 0, -1));
+  camPos.set(0, 2.5, 12.5);
   reanalyze(); hudIntegrity(); HUD.slot(null);
 }
 
@@ -179,6 +221,38 @@ function targetFrom(origin, dir) {
   if (!G.inB(x, y, z) || blocked(x, y, z)) return null;
   return { x, y, z, n: [h.nx, h.ny, h.nz] };
 }
+// Build assist: if your aim is within a few degrees of an open core face you
+// can see, the shot snaps to it. Building on top of your own loose blocks
+// still works when you aim at them directly.
+const ASSIST = Math.cos(THREE.MathUtils.degToRad(3.2));
+let faceSet = null, faceSetOf = null;
+function openFaceCells() {
+  if (faceSetOf !== S.a) {
+    faceSetOf = S.a; faceSet = new Set();
+    for (const f of S.a.faces) faceSet.add(G.idx(f[0] + f[3], f[1] + f[4], f[2] + f[5]));
+  }
+  return faceSet;
+}
+const assistDir = new THREE.Vector3();
+function aimTarget(origin, dir) {
+  const raw = targetFrom(origin, dir);
+  if (!S.a || (raw && openFaceCells().has(G.idx(raw.x, raw.y, raw.z)))) return raw;
+  let best = null, bestDot = ASSIST;
+  for (const f of S.a.faces) {
+    const x = f[0] + f[3], y = f[1] + f[4], z = f[2] + f[5];
+    if (blocked(x, y, z)) continue;
+    // the face has to point at you
+    if ((origin.x - x) * f[3] + (origin.y - y) * f[4] + (origin.z - z) * f[5] <= 0) continue;
+    assistDir.set(x - origin.x, y - origin.y, z - origin.z).normalize();
+    const d = assistDir.dot(dir);
+    if (d > bestDot) { bestDot = d; best = [x, y, z]; }
+  }
+  if (!best) return raw;
+  // only if nothing is in the way
+  const t = targetFrom(origin, assistDir.set(best[0] - origin.x, best[1] - origin.y, best[2] - origin.z).normalize());
+  return t && t.x === best[0] && t.y === best[1] && t.z === best[2] ? t : raw;
+}
+
 // the cells a shot of this pattern would fill
 const cellsFor = (tgt, kind) => pattern(kind, tgt.n).map(([a, b, c]) => [tgt.x + a, tgt.y + b, tgt.z + c]).filter(([x, y, z]) => G.inB(x, y, z) && !blocked(x, y, z));
 const isVersusHost = () => S.game === 'versus' && V.isHost;
@@ -192,7 +266,7 @@ function fireBuild(from, tgt, owner = 0, kind = 'single', seat = -1, visual = fa
   m.scale.setScalar(kind === 'big' ? 2 : kind === 'cross' ? 1.5 : 1);
   scene.add(m);
   shots.push({ kind: 'build', m, from: from.clone(), to, cells, owner, seat, visual, t: 0, dur: Math.max(0.05, from.distanceTo(to) / 80) });
-  if (seat === S.seat || (seat < 0 && !owner)) { sfx.fire(); HUD.kick(); }
+  if (seat === S.seat || (seat < 0 && !owner)) { sfx.fire(); HUD.kick(); if (S.mode === 'play') muzzle(from, kind === 'single' ? 0.26 : 0.4, 0.035); }
   if (isVersusHost() && !visual) V.shot(seat, 'build', from, { x: tgt.x, y: tgt.y, z: tgt.z, n: tgt.n }, kind);
 }
 
@@ -200,7 +274,7 @@ function fireBlast(from, dir, area, team, seat = -1, visual = false) {
   const m = new THREE.Mesh(blastGeo, team === 1 ? botBlastMat : blastMat); m.position.copy(from); fxOnly(m); scene.add(m);
   if (area) m.scale.setScalar(1.6);
   shots.push({ kind: 'blast', m, p: from.clone(), v: dir.clone().multiplyScalar(75), life: 0.7, area, team, seat, visual });
-  if (seat === S.seat || seat < 0) { sfx.blast(); HUD.kick(); }
+  if (seat === S.seat || seat < 0) { sfx.blast(); HUD.kick(); if (S.mode === 'play') muzzle(from, 0.42, 0.09); }
   if (isVersusHost() && !visual) V.shot(seat, 'bolt', from, dir.toArray());
 }
 
@@ -211,7 +285,7 @@ function fireBomb(from, dir, team, seat = -1, visual = false) {
   const ring = new THREE.Mesh(bombRingGeo, bombRingMat); m.add(ring);
   scene.add(m);
   shots.push({ kind: 'bomb', m, p: from.clone(), v: dir.clone().multiplyScalar(36), life: 1.6, team, seat, visual });
-  if (seat === S.seat || seat < 0) { sfx.blast(); HUD.kick(); }
+  if (seat === S.seat || seat < 0) { sfx.blast(); HUD.kick(); if (S.mode === 'play') muzzle(from, 0.5, 0.15); }
   if (isVersusHost() && !visual) V.shot(seat, 'bomb', from, dir.toArray());
 }
 function explode(p, team, seat, visual) {
@@ -220,6 +294,7 @@ function explode(p, team, seat, visual) {
   FX.ring(p, camera.position.clone().sub(p).normalize(), 0xffffff, 4, 0.4);
   sfx.impact();
   S.shake = Math.max(S.shake, Math.max(0, 0.6 - camera.position.distanceTo(p) / 40));
+  if (mine(seat) && S.mode === 'play') hitstop(0.06);
   if (visual) return;
   const x = Math.round(p.x), y = Math.round(p.y), z = Math.round(p.z);
   for (const [a, b, c] of [[0, 0, 0], ...G.D6]) {
@@ -254,7 +329,7 @@ function fireLaser(from, dir, team, seat = -1, visual = false) {
   }
   FX.beam(from, end, team === 1 ? PAL.bot : PAL.mine);
   FX.burst(end, 0xffffff, 6, 5, 0.18);
-  if (seat === S.seat || seat < 0) { sfx.laser(); HUD.kick(); S.shake = Math.max(S.shake, 0.15); }
+  if (seat === S.seat || seat < 0) { sfx.laser(); HUD.kick(); S.shake = Math.max(S.shake, 0.15); if (S.mode === 'play') muzzle(from, 0.5, 0.13); }
   if (isVersusHost() && !visual) V.shot(seat, 'laser', from, dir.toArray());
 }
 
@@ -264,10 +339,13 @@ function destroyBlock(i, byPlayer, seat) {
   if (byPlayer && theirs && S.game !== 'versus') { S.score += 5; S.cleared++; }
   if (isVersusHost()) V.removed(i, seat);
   breakFX(i, theirs);
+  if (byPlayer && mine(seat)) confirmHit(false);
   reanalyze();
 }
 function breakFX(i, team) {
   const p = new THREE.Vector3(G.cx(i), G.cy(i), G.cz(i));
+  // a white pop the size of the block, then the pieces
+  FX.puff(p, 0xffffff, 1, 0, 0.85, 0.1);
   FX.burst(p, team ? PAL.bot : PAL.mine, 8, 6, 0.24); FX.puff(p, 0xffffff, 3, 0.5, 0.4);
   sfx.pop();
 }
@@ -278,9 +356,18 @@ function kill(kind, p) {
   FX.ring(p, camera.position.clone().sub(p).normalize(), 0xffffff, 3, 0.35);
   S.score += kind === 'meteor' ? 50 : kind === 'bot' ? 100 : 25;
   if (kind === 'meteor') S.meteorsDown++;
+  S.kills++;
   HUD.bump();
   S.shake = Math.max(S.shake, 0.25);
+  confirmHit(true);
   sfx.pop();
+}
+
+// a bolt that clips a meteor or nibbler: kills confirm themselves
+function threatHit(p, r) {
+  const k = S.kills, h = T.hitTest(p, r, kill);
+  if (h && S.kills === k) confirmHit(false);
+  return h;
 }
 
 function updateShots(dt) {
@@ -334,8 +421,13 @@ function updateShots(dt) {
         s.p.addScaledVector(s.v, dt / steps);
         const x = Math.round(s.p.x), y = Math.round(s.p.y), z = Math.round(s.p.z);
         const c = G.get(x, y, z);
-        if (s.visual) { if (c || (S.game === 'versus' && V.shipNear(s.p, s.team))) hit = true; continue; }
-        if (S.game === 'versus' ? V.hitShips(s.p, 0.95, s.team, 'bolt', s.seat) : hitBot(s.p) || T.hitTest(s.p, s.area ? 0.6 : 0.3, kill)) { hit = true; break; }
+        if (s.visual) {
+          if (c || (S.game === 'versus' && V.shipNear(s.p, s.team))) hit = true;
+          // a guest's own bolt: confirm the break it will get from the host
+          if (c === G.LOOSE && s.seat === S.seat && G.owner[G.idx(x, y, z)] !== s.team) confirmHit(false);
+          continue;
+        }
+        if (S.game === 'versus' ? V.hitShips(s.p, 0.95, s.team, 'bolt', s.seat) : hitBot(s.p) || threatHit(s.p, s.area ? 0.6 : 0.3)) { hit = true; break; }
         if (c === G.LOOSE) {
           const i = G.idx(x, y, z);
           // your own team's blocks stop the bolt but don't break
@@ -365,6 +457,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyH') $('keys').classList.toggle('hidden');
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyE' && S.mode === 'play' && !S.auto) useItem();
+  if (e.code === 'KeyQ' && !e.repeat && S.mode === 'play' && !S.auto) dash();
   if (e.code === 'Escape' && S.mode === 'play' && !locked) setMode('pause');
   if (e.code === 'Space') e.preventDefault();
 });
@@ -450,8 +543,9 @@ function chaseCamera(dt) {
   camera.up.set(0, 1, 0);
   camera.lookAt(tmp.copy(camPos).add(F));
   // super speed pulls the lens wide
-  const fov = S.fx.boost > 0 ? 82 : 68;
-  if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-6 * dt)); camera.updateProjectionMatrix(); }
+  // a dash and recoil punch it briefly
+  const fov = (S.fx.boost > 0 ? 82 : 68) + (pilot.dashing ? 9 : 0) + S.fovKick;
+  if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-12 * dt)); camera.updateProjectionMatrix(); }
 }
 
 function frameOffset() {
@@ -488,12 +582,15 @@ const aiCtx = {
   enemyShips: team => versusShips().filter(s => s.team !== team),
   fireBlastAs: fireAs,
 };
-const me = AI.agent(pilot);
+const me = AI.agent(pilot, { dash: true });
 // title + ?watch: you build in Survival, defend in Containment
-const autopilot = dt => (S.game === 'containment' && S.mode === 'play' ? AI.defend : AI.build)(me, dt, aiCtx);
+const autopilot = dt => {
+  me.rate = LOADOUTS[S.loadout].build.rate * tempo(S.layer);
+  (S.game === 'containment' && S.mode === 'play' ? AI.defend : AI.build)(me, dt, aiCtx);
+};
 
 const V = createVersus({
-  S, scene, pilot, aiCtx, notice, gotItem, stunMe, startVersus, versusOver,
+  S, scene, pilot, aiCtx, notice, gotItem, stunMe, onStun, startVersus, versusOver,
   mirrorPlace, mirrorRemove, mirrorSeal, mirrorShot, remoteBuild, remoteBlast,
   lobbyChanged: note => { if (S.screen === 'lobby') HUD.lobby(V, LOADOUTS, note); },
   toLobby: () => toLobby(), backToMenu: () => toMenu(),
@@ -510,7 +607,7 @@ $('startMatch').onclick = () => V.start();
 $('fillBots').onclick = () => V.fillBots();
 
 // ---------- containment: builder bots ----------
-const CRIT = 4, MAX_BOTS = 4, BOT_HP = 5;
+let CRIT = 7; const MAX_BOTS = 4, BOT_HP = 5;
 const bots = [];
 function addBot() {
   const mesh = buildShip(PAL.bot, PAL.botGlow, 0x4a2140); scene.add(mesh);
@@ -537,6 +634,8 @@ function damageBot(b, dmg, p) {
   b.hp -= dmg; b.pilot.stun = 0.45;
   b.pilot.vel.add(b.pilot.pos.clone().sub(p).setLength(6));
   FX.burst(p, PAL.bot, 6, 6, 0.25); sfx.pop();
+  flashShip(b.mesh, 0.12);
+  if (b.hp > 0) confirmHit(false);
   if (b.hp <= 0) { b.dead = botRespawn(); b.mesh.visible = false; S.downed++; kill('bot', b.pilot.pos.clone()); }
 }
 // a bolt that reaches a bot: each hit knocks it off its line
@@ -603,15 +702,56 @@ function fly(dt) {
     pitch = Math.asin(THREE.MathUtils.clamp(pilot.fwd.y, -1, 1)); yaw = Math.atan2(-pilot.fwd.x, -pilot.fwd.z);
   } else {
     aimFwd(F); R.set(Math.cos(yaw), 0, -Math.sin(yaw));
-    wishV.set(0, 0, 0);
-    if (keys.has('KeyW')) wishV.add(F); if (keys.has('KeyS')) wishV.sub(F);
-    if (keys.has('KeyD')) wishV.add(R); if (keys.has('KeyA')) wishV.sub(R);
-    if (keys.has('Space')) wishV.y += 1; if (keys.has('ShiftLeft') || keys.has('ShiftRight')) wishV.y -= 1;
-    if (wishV.lengthSq() > 1) wishV.normalize();
+    wishFromKeys(wishV);
     pilot.update(dt, wishV, F, R);
   }
   chaseCamera(dt);
   aimFwd(F);
+}
+
+function wishFromKeys(out) {
+  out.set(0, 0, 0);
+  if (keys.has('KeyW')) out.add(F); if (keys.has('KeyS')) out.sub(F);
+  if (keys.has('KeyD')) out.add(R); if (keys.has('KeyA')) out.sub(R);
+  if (keys.has('Space')) out.y += 1; if (keys.has('ShiftLeft') || keys.has('ShiftRight')) out.y -= 1;
+  if (out.lengthSq() > 1) out.normalize();
+  return out;
+}
+// Dash (Q): toward the keys you're holding, or where you're looking. Hold
+// Shift or Space with it to drop under or pop over the core.
+function dash() {
+  aimFwd(F); R.set(Math.cos(yaw), 0, -Math.sin(yaw));
+  const dir = wishFromKeys(new THREE.Vector3());
+  if (dir.lengthSq() < 0.01) dir.copy(F);
+  if (!pilot.tryDash(dir, R)) { if (pilot.stun <= 0) noAmmo(); return; }
+  S.dodged = false;
+  sfx.dash();
+  S.fovKick += 4;
+  FX.ring(pilot.pos, dir, 0xffffff, 2.2, 0.3);
+  FX.puff(pilot.pos, 0xffffff, 6, 0.6, 0.35, 0.3);
+}
+// Close call: a dash that slips past a meteor or an enemy shot at close range
+// gives the charge back, a beat of slow motion and a few points.
+function closeCall() {
+  if (!pilot.dashing || S.dodged) return;
+  const p = pilot.pos;
+  const near = S.game === 'versus'
+    ? shots.some(s => (s.kind === 'blast' || s.kind === 'bomb') && s.team !== S.team && s.p.distanceTo(p) < 1.8)
+    : T.meteors.some(o => o.pos.distanceTo(p) < 1.4 + o.K.r);
+  if (!near) return;
+  S.dodged = true;
+  pilot.dashN = Math.min(DASH.charges, pilot.dashN + 1);
+  // slow motion would slow everyone in Versus, so there it's a flash and a punch
+  if (S.game !== 'versus') { S.slow = Math.max(S.slow, 0.4); S.score += 25; }
+  S.fovKick -= 5;
+  FX.ring(p, camera.position.clone().sub(p).normalize(), 0xbfefff, 3.2, 0.45);
+  sfx.dodge(); HUD.pop('Close call');
+}
+function dashTrail() {
+  if (!pilot.dashing) return;
+  const b = pilot.mesh.userData.body;
+  for (const s of [-1, 1]) FX.dot(b.localToWorld(tmp.set(s * 1.1, 0, -0.1)), 0xffffff, 0.16, 0.32);
+  FX.dot(pilot.pos, 0xbfefff, 0.3, 0.2);
 }
 
 // the blaster: bolt, cross bolt or laser, by loadout; costs energy
@@ -633,6 +773,12 @@ function noAmmo() { if (S.emptyCD <= 0) { sfx.empty(); S.emptyCD = 0.25; } }
 
 function play(dt) {
   fly(dt);
+  closeCall();
+  dashTrail();
+  blinkImmune(dt);
+  if (pilot.dashN > S.dashN && dt > 0) sfx.dashReady();
+  S.dashN = pilot.dashN;
+  HUD.dash(pilot.dashN, pilot.dashCD / DASH.recharge);
   energy.update(dt); S.emptyCD -= dt;
   updateItems(dt);
   if (S.game === 'versus') versusPlay(dt);
@@ -643,7 +789,7 @@ function play(dt) {
 function survive(dt) {
   const L = LOADOUTS[S.loadout];
   const kind = S.fx.big > 0 ? 'big' : L.build.pattern;
-  const tgt = targetFrom(camera.position, F);
+  const tgt = aimTarget(camera.position, F);
   HUD.cross(!!tgt);
   showGhost(tgt && !S.auto ? (kind === 'single' ? [[tgt.x, tgt.y, tgt.z]] : cellsFor(tgt, kind)) : []);
   if (!S.auto) {
@@ -652,7 +798,7 @@ function survive(dt) {
       const cost = kind === 'big' ? 6 : L.build.cost;
       if (energy.use(cost)) {
         fireBuild(pilot.nose(), tgt, 0, kind);
-        S.fireCD = kind === 'big' ? 0.3 : L.build.rate;
+        S.fireCD = kind === 'big' ? 0.3 : L.build.rate * tempo(S.layer);
         if (kind === 'big' && --S.fx.big <= 0) notice('Your big blocks are used up.', 'lilac');
       } else noAmmo();
     }
@@ -670,7 +816,9 @@ function survive(dt) {
   S.waveT -= dt;
   if (S.waveT <= 0) {
     S.wave++;
-    const n = LV.size[0] + Math.floor(Math.random() * (LV.size[1] - LV.size[0] + 1));
+    // waves start small and grow to full size over the first 50 seconds
+    const ramp = Math.min(1, 0.3 + S.time / 70), lo = Math.max(1, Math.round(LV.size[0] * ramp)), hi = Math.max(lo, Math.round(LV.size[1] * ramp));
+    const n = lo + Math.floor(Math.random() * (hi - lo + 1));
     for (let k = 0; k < n; k++) S.queue.push({ at: k * 0.45, kind: pickKind(LV.mix) });
     S.waveT = LV.every;
     sfx.warn();
@@ -684,11 +832,12 @@ function survive(dt) {
     S.droneT -= dt;
     if (S.droneT <= 0 && T.drones.length < LV.nibblers) { T.spawnDrone(); S.droneT = 9; }
   }
-  T.update(dt, S.t, { destroyBlock, impact, inSmoke: Items.inSmoke }, pilot.pos, (p, o) => {
+  // a dash slips straight through a meteor
+  T.update(dt, S.t, { destroyBlock, impact, inSmoke: Items.inSmoke }, pilot.dashing ? NOWHERE : pilot.pos, (p, o) => {
     // a shield breaks the rock instead of you
     if (S.fx.shield > 0) { kill('meteor', p); return; }
     pilot.stun = 1.1; pilot.vel.add(pilot.pos.clone().sub(p).setLength(12));
-    S.shake = Math.max(S.shake, 0.6); sfx.stun();
+    sfx.stun(); hurtMe(p, 1);
   });
 }
 
@@ -702,7 +851,7 @@ function buildMine(tgt, kind) {
 function versusPlay(dt) {
   const L = LOADOUTS[S.loadout];
   const kind = S.fx.big > 0 ? 'big' : L.build.pattern;
-  const tgt = targetFrom(camera.position, F);
+  const tgt = aimTarget(camera.position, F);
   HUD.cross(!!tgt);
   showGhost(tgt ? (kind === 'single' ? [[tgt.x, tgt.y, tgt.z]] : cellsFor(tgt, kind)) : []);
   if (V.phase === 'playing') {
@@ -711,7 +860,7 @@ function versusPlay(dt) {
       const cost = kind === 'big' ? 6 : L.build.cost;
       if (energy.use(cost)) {
         buildMine(tgt, kind);
-        S.fireCD = kind === 'big' ? 0.3 : L.build.rate;
+        S.fireCD = kind === 'big' ? 0.3 : L.build.rate * tempo(S.layer);
         if (kind === 'big' && --S.fx.big <= 0) notice('Your big blocks are used up.', 'lilac');
       } else noAmmo();
     }
@@ -751,9 +900,21 @@ function versusOver(res) {
   }, 1500);
 }
 function stunMe(dur, from) {
-  if (S.fx.shield > 0) return;
+  if (S.fx.shield > 0 || pilot.dashing) return;
   pilot.stun = dur; pilot.vel.add(pilot.pos.clone().sub(from).setLength(10));
-  S.shake = Math.max(S.shake, 0.5); sfx.stun();
+  S.immune = dur + IMMUNE;
+  sfx.stun(); hurtMe(from, 0.6 + dur * 0.25);
+}
+// after a stun you blink for a second and can't be stunned again (the host enforces it)
+function blinkImmune(dt) {
+  if (S.immune <= 0) return;
+  S.immune = Math.max(0, S.immune - dt);
+  pilot.mesh.visible = S.immune > IMMUNE || S.immune === 0 || Math.floor(S.t * 14) % 2 === 0;
+}
+// any stun in versus: the hit plane flashes; if it was your shot, confirm it
+function onStun(seat, bySeat, mesh) {
+  if (mesh) flashShip(mesh, 0.14);
+  if (bySeat === S.seat && seat !== S.seat) confirmHit(true);
 }
 // guests: apply exactly what the host decided
 function mirrorPlace(i, team) {
@@ -811,6 +972,7 @@ function impact(p, cracked) {
   S.shake = Math.max(S.shake, 0.25 + near * 0.5);
   if (cracked && !S.ending) {
     S.integrity--; sfx.crack(); S.shake = 0.9;
+    hitstop(0.14); S.flash = Math.max(S.flash, 0.45); muffle(0.6);
     hudIntegrity();
     if (S.integrity <= 0) return finish('Cracked!', 'bad');
     HUD.callout('Cracked!', S.integrity === 1 ? 'One left' : `${S.integrity} left`, 'bad');
@@ -867,7 +1029,7 @@ function hudSeal() {
   if (S.mode !== 'play' || noticeT > 0) return;
   // the left-edge tab names the moment: nearly sealed, or one from critical
   if (c) HUD.tab(S.crit === CRIT - 1 ? 'One more and it goes critical' : null, 'violet');
-  else HUD.tab(S.a.exposedFaces <= 8 && S.a.exposedFaces > 0 ? 'Almost sealed' : null, 'lilac');
+  else HUD.tab(S.a.exposedFaces <= nearly() && S.a.exposedFaces > 0 ? 'Almost sealed' : null, 'lilac');
 }
 function hudIntegrity() {
   if (S.game === 'containment') HUD.gems(S.crit, CRIT, 'crit');
@@ -914,6 +1076,7 @@ function frame(rdt) {
   lastStep = performance.now();
   let dt = rdt;
   if (S.slow > 0) { S.slow -= rdt; dt *= 0.15; }
+  if (S.stop > 0) { S.stop -= rdt; dt = 0; }
   if (S.ending > 0) { S.ending -= rdt; if (S.ending <= 0) gameOver(); }
   if (S.mode !== 'pause' || S.game === 'versus') {
     S.t += dt;
@@ -926,6 +1089,7 @@ function frame(rdt) {
     else orbitCamera(rdt);
     updateShots(dt);
     FX.update(dt);
+    updateFlashes(dt);
     B.update(S.t);
     updateBeacons(S.t);
   }
@@ -940,14 +1104,20 @@ function frame(rdt) {
   S.shake = Math.max(0, S.shake - rdt * 1.8);
   const s = S.shake * S.shake * 0.35;
   camera.position.x += (Math.random() - 0.5) * s; camera.position.y += (Math.random() - 0.5) * s;
+  // directional kick (recoil, getting hit) springs back
+  camera.position.add(S.kick); S.kick.multiplyScalar(Math.exp(-11 * rdt));
+  S.fovKick *= Math.exp(-9 * rdt);
   S.flash = Math.max(0, S.flash - rdt * 2.2);
   HUD.flash(S.flash * S.flash);
   ocean.material.uniforms.t.value = S.t;
-  post.render(scene, camera);
+  // balance sims step thousands of frames: skip drawing them
+  if (!S.headless) post.render(scene, camera);
 }
 function tick(now) {
   requestAnimationFrame(tick);
-  frame(Math.min(0.05, (now - last) / 1000)); last = now;
+  // an old rAF timestamp can land after the watchdog moved `last` forward;
+  // a negative step would run every decay backwards, so clamp at zero
+  frame(Math.max(0, Math.min(0.05, (now - last) / 1000))); last = Math.max(last, now);
 }
 // the embedded preview throttles rAF; keep stepping if it stalls
 setInterval(() => { if (performance.now() - lastStep > 250) { frame(0.05); last = performance.now(); } }, 60);
@@ -1009,10 +1179,12 @@ window.__strata = {
   skill: k => { me.skill = k; },
   get bots() { return bots; }, addBot, hitBot,
   aim: (y, p) => { yaw = y; pitch = p; },
+  target: () => { aimFwd(F); camera.position.copy(camPos); return { assisted: aimTarget(camera.position, F), raw: targetFrom(camera.position, F) }; },
   fire: () => { aimFwd(F); const t = targetFrom(camera.position, F); if (t) fireBuild(pilot.nose(), t, 0, LOADOUTS[S.loadout].build.pattern); return t; },
   blast: () => { aimFwd(F); trySecondary(1, G.raycast(camera.position, F, 60)); },
   give: k => { S.held = k; HUD.slot(k, Items.ITEMS[k]); }, use: () => useItem(), V,
   auto: on => { S.auto = on; },
+  crit: n => { CRIT = n; },
   meteor: (kind = 'normal') => T.spawnMeteor(6, kind),
   // debug: cover every open face except `leave` of them
   cover: (leave = 0) => { for (const f of S.a.faces.slice(leave)) { G.place(f[0] + f[3], f[1] + f[4], f[2] + f[5]); S.lastPlace.set(f[0] + f[3], f[1] + f[4], f[2] + f[5]); } reanalyze(); return S.a.exposedFaces; },

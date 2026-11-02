@@ -3,25 +3,29 @@
 export const LOADOUTS = {
   rapid: {
     name: 'Rapid', role: 'All-rounder', blurb: 'Places one block at a time and fires very quickly. It is the most balanced choice.',
-    build: { rate: 0.085, cost: 1.5, pattern: 'single' }, blast: { kind: 'bolt', rate: 0.16, cost: 2.5 },
+    build: { rate: 0.15, cost: 1.5, pattern: 'single' }, blast: { kind: 'bolt', rate: 0.24, cost: 2.5 },
     stats: { 'Fire rate': 5, 'Blocks per shot': 1, Blaster: 3 },
   },
   cross: {
     name: 'Cross', role: 'Builder', blurb: 'Fires more slowly, but every shot places five blocks in a plus shape. It is the fastest way to cover a layer.',
-    build: { rate: 0.34, cost: 6, pattern: 'cross' }, blast: { kind: 'bolt', rate: 0.22, cost: 2.5 },
+    build: { rate: 0.5, cost: 6, pattern: 'cross' }, blast: { kind: 'bolt', rate: 0.3, cost: 2.5 },
     stats: { 'Fire rate': 2, 'Blocks per shot': 5, Blaster: 2 },
   },
   laser: {
     name: 'Laser', role: 'Sniper', blurb: 'Places blocks one at a time. The blaster is a laser that fires slowly but cuts through every loose block and enemy in a straight line.',
-    build: { rate: 0.11, cost: 1.5, pattern: 'single' }, blast: { kind: 'laser', rate: 0.55, cost: 10 },
+    build: { rate: 0.19, cost: 1.5, pattern: 'single' }, blast: { kind: 'laser', rate: 0.7, cost: 10 },
     stats: { 'Fire rate': 4, 'Blocks per shot': 1, Blaster: 5 },
   },
   bomber: {
     name: 'Bomber', role: 'Breaker', blurb: 'Places blocks a little slowly. The blaster lobs a bomb that breaks the block it hits and every block touching its six faces, and it stuns anyone caught in the blast.',
-    build: { rate: 0.13, cost: 1.5, pattern: 'single' }, blast: { kind: 'bomb', rate: 0.9, cost: 14 },
+    build: { rate: 0.22, cost: 1.5, pattern: 'single' }, blast: { kind: 'bomb', rate: 1, cost: 14 },
     stats: { 'Fire rate': 3, 'Blocks per shot': 1, Blaster: 5 },
   },
 };
+
+// Tempo: the build gun starts slow and speeds up with every sealed layer,
+// because each layer needs more blocks than the last (6, 18, 38, 66, ...).
+export const tempo = layer => Math.max(0.55, 1 - 0.09 * (layer - 1));
 
 // how long a hit ship stays stunned, by what hit it (versus)
 export const STUN = { bolt: 0.6, laser: 1.2, bomb: 1.5 };

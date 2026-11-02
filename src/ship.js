@@ -40,9 +40,24 @@ export function buildShip(accent = PAL.teal, ring = PAL.glow, canopy = PAL.glass
     body.add(prop); props.push(prop);
   }
   root.scale.setScalar(0.92);
-  root.userData = { body, props };
+  root.userData = { body, props, mats: [hull, trim, glass] };
   return root;
 }
+
+// Hit flash: the whole plane goes white for a beat, then fades back.
+const flashing = new Map();
+export function flashShip(mesh, dur = 0.12) { flashing.set(mesh, Math.max(flashing.get(mesh) || 0, dur)); }
+export function updateFlashes(dt) {
+  for (const [mesh, t] of flashing) {
+    const k = Math.max(0, t / 0.12);
+    for (const m of mesh.userData.mats) { m.emissive.setRGB(1, 1, 1); m.emissiveIntensity = Math.min(1, k) * 1.4; }
+    if (t <= 0) flashing.delete(mesh); else flashing.set(mesh, t - dt);
+  }
+}
+
+// Dash: two charges that refill one at a time. A dash throws the plane hard
+// in one direction with a barrel roll, and nothing can stun you mid-dash.
+export const DASH = { charges: 2, recharge: 1.9, speed: 40, time: 0.22 };
 
 const RADIUS = 0.62, MAX_R = 46;
 
@@ -52,16 +67,34 @@ export class Pilot {
     this.pos = new THREE.Vector3(); this.vel = new THREE.Vector3();
     this.fwd = new THREE.Vector3(0, 0, -1);
     this.stun = 0; this.roll = 0; this.spin = 0; this.boost = 1;
+    this.dashN = DASH.charges; this.dashCD = 0; this.dashT = 0; this.dashRoll = 1;
   }
-  reset(p, fwd) { this.pos.copy(p); this.vel.set(0, 0, 0); this.fwd.copy(fwd); this.stun = 0; this.boost = 1; }
+  reset(p, fwd) {
+    this.pos.copy(p); this.vel.set(0, 0, 0); this.fwd.copy(fwd); this.stun = 0; this.boost = 1;
+    this.dashN = DASH.charges; this.dashCD = 0; this.dashT = 0;
+  }
+  get dashing() { return this.dashT > 0; }
+  // dir: world direction, any length
+  tryDash(dir, right) {
+    if (this.stun > 0 || this.dashN < 1 || dir.lengthSq() < 1e-6) return false;
+    this.dashN--; this.dashT = DASH.time;
+    this.vel.copy(dir).normalize().multiplyScalar(DASH.speed * this.boost);
+    // roll toward the side you dash to; straight dashes roll right
+    const side = right ? dir.dot(right) : 0;
+    this.dashRoll = side < -0.2 ? 1 : -1;
+    return true;
+  }
 
   // wish: desired direction (world, length<=1). Snappy: high accel, quick damping.
   update(dt, wish, aimFwd, right) {
     const accel = this.stun > 0 ? 0 : 70 * this.boost;
+    this.dashT = Math.max(0, this.dashT - dt);
+    if (this.dashN < DASH.charges && (this.dashCD += dt) >= DASH.recharge) { this.dashN++; this.dashCD = 0; }
     this.vel.addScaledVector(wish, accel * dt);
-    this.vel.multiplyScalar(Math.exp(-(this.stun > 0 ? 2 : 5.5) * dt));
-    const max = 17 * this.boost;
-    if (this.vel.length() > max) this.vel.setLength(max);
+    if (!this.dashing) this.vel.multiplyScalar(Math.exp(-(this.stun > 0 ? 2 : 5.5) * dt));
+    // over the cap (after a dash) bleeds off smoothly instead of snapping
+    const max = (this.dashing ? DASH.speed : 17) * this.boost, sp = this.vel.length();
+    if (sp > max) this.vel.setLength(max + (sp - max) * Math.exp(-9 * dt));
     this.pos.addScaledVector(this.vel, dt);
     this.collide();
     const r = this.pos.length();
@@ -77,7 +110,8 @@ export class Pilot {
     m.position.copy(this.pos);
     m.lookAt(this.pos.clone().add(this.fwd));
     const { body, props } = m.userData;
-    body.rotation.z = this.roll + (this.stun > 0 ? this.spin : 0);
+    const barrel = this.dashing ? this.dashRoll * Math.PI * 2 * (1 - this.dashT / DASH.time) ** 0.7 : 0;
+    body.rotation.z = this.roll + barrel + (this.stun > 0 ? this.spin : 0);
     body.position.y = Math.sin(performance.now() * 0.004) * 0.04;
     for (const p of props) p.rotation.z += dt * (18 + this.vel.length() * 2);
   }

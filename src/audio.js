@@ -1,6 +1,6 @@
 // Tiny synth for feedback sounds only. The place blip climbs in pitch as the
 // layer fills, so you can hear yourself closing in on a seal.
-let ctx = null, master = null;
+let ctx = null, master = null, muffler = null;
 let muted = false;
 try { muted = localStorage.getItem('strata-muted') === '1'; } catch {}
 export const isMuted = () => muted;
@@ -33,10 +33,24 @@ export function musicLevel(which) {
     if (music.volume === target) clearInterval(fade);
   }, 30);
 }
+// a hit ducks the music and muffles the effects, then both come back
+export function muffle(dur = 0.6) {
+  const c = ac(), t = c.currentTime;
+  muffler.frequency.cancelScheduledValues(t);
+  muffler.frequency.setValueAtTime(480, t);
+  muffler.frequency.setTargetAtTime(20000, t + dur * 0.4, dur * 0.35);
+  if (music.paused) return;
+  const back = target;
+  music.volume = Math.min(music.volume, back * 0.35);
+  setTimeout(() => { if (target === back) musicLevel(back === LEVEL.quiet ? 'quiet' : 'normal'); }, dur * 600);
+}
 function ac() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5; master.connect(ctx.destination);
+    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5;
+    // getting hit closes this filter for a moment: everything sounds underwater
+    muffler = ctx.createBiquadFilter(); muffler.type = 'lowpass'; muffler.frequency.value = 20000;
+    master.connect(muffler).connect(ctx.destination);
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
@@ -88,4 +102,12 @@ export const sfx = {
   star: k => tone(note(660, k * 2), 0.5, 'triangle', 0.16),
   tick: () => tone(1046, 0.05, 'sine', 0.08),
   select: () => tone(880, 0.04, 'triangle', 0.06),
+  // hit confirm: a dry tick; a kill adds a bright second note
+  hit: () => tone(1900, 0.035, 'square', 0.035, 0, 0.8),
+  kill: () => { tone(1900, 0.04, 'square', 0.04, 0, 0.8); tone(2600, 0.09, 'triangle', 0.06, 0.035); },
+  // you got hit: a body thud, a crunch and a thin ringing tone
+  hurt: () => { noise(0.3, 0.4, 900); tone(80, 0.3, 'sine', 0.35, 0, 0.45); tone(3100, 0.7, 'sine', 0.025, 0.04); },
+  dash: () => { noise(0.22, 0.16, 5200); tone(240, 0.2, 'sawtooth', 0.04, 0, 2.6); },
+  dashReady: () => tone(1320, 0.05, 'sine', 0.035),
+  dodge: () => { tone(988, 0.12, 'triangle', 0.1); tone(1480, 0.22, 'triangle', 0.08, 0.06); noise(0.18, 0.05, 6000); },
 };

@@ -83,6 +83,33 @@ export const cross = on => $('cross').classList.toggle('on', on);
 export function kick() {
   const c = $('cross'); c.classList.remove('kick'); void c.offsetWidth; c.classList.add('kick');
 }
+// hit markers on the crosshair: 'hit' or 'killed'
+export function hitMark(kind = 'hit') {
+  const c = $('cross'); c.classList.remove('hit', 'killed'); void c.offsetWidth; c.classList.add(kind);
+}
+// dash charges on the left of the crosshair: each arc fills as it recharges
+const DASH_ARC = 49;
+let dashWas = [1, 1];
+export function dash(n, frac) {
+  for (let k = 0; k < 2; k++) {
+    const f = k < n ? 1 : k === n ? frac : 0, el = $(`dash${k}`);
+    el.style.strokeDashoffset = `${DASH_ARC * (1 - f)}`;
+    el.classList.toggle('full', f >= 1);
+    if (f >= 1 && dashWas[k] < 1) { el.classList.remove('pop'); void el.getBBox(); el.classList.add('pop'); }
+    dashWas[k] = f;
+  }
+}
+// a short word under the crosshair ("Close call")
+export function pop(text) {
+  const el = $('pop'); el.textContent = text;
+  el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+}
+// a hit: the edge of the screen whites out, heaviest on the side it came from
+export function hurt(sx = 0, sy = 0) {
+  const h = $('hurt');
+  h.style.setProperty('--x', `${50 - sx * 40}%`); h.style.setProperty('--y', `${50 - sy * 40}%`);
+  h.classList.remove('on'); void h.offsetWidth; h.classList.add('on');
+}
 // ammo arc on the right of the crosshair
 const ARC = 106.8; // half-circle length for r = 34
 export function ammo(frac, { charging, empty, infinite }) {
@@ -98,7 +125,7 @@ export function ammo(frac, { charging, empty, infinite }) {
 
 export function keys(game) {
   const k = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
-  $('keys').innerHTML = [k('Mouse', 'Aim'), k('WASD', 'Fly'), k('Space', 'Up'), k('Shift', 'Down'),
+  $('keys').innerHTML = [k('Mouse', 'Aim'), k('WASD', 'Fly'), k('Space', 'Up'), k('Shift', 'Down'), k('Q', 'Dash'),
     ...(game === 'containment' ? [k('Click', 'Blast')] : [k('Left', 'Place'), k('Right', 'Blast')]), k('E', 'Item'), k('M', 'Mute'), k('H', 'Hide')].join('');
 }
 
@@ -193,7 +220,7 @@ function band(id, meta, text) {
 const MODES = {
   survival: ['1 player · 3 levels', 'Shoot blocks onto the core until it is completely covered. That seals the layer and scores points. Each level lasts two minutes, and your final score decides how many stars you earn.'],
   versus: ['2 to 4 players · online', 'Two teams build on the same core. When a layer seals, its points go to each team by how many of its blocks they placed. Break the other team’s blocks and stun their pilots. Empty seats can be filled with bots.'],
-  containment: ['1 player · endless', 'Builder bots are trying to grow the core. Shoot them and the blocks they place. If they seal four layers, the core goes critical and the run ends.'],
+  containment: ['1 player · endless', 'Builder bots are trying to grow the core. Shoot them and the blocks they place. If they seal seven layers, the core goes critical and the run ends.'],
   how: ['Controls', 'Use your mouse to look around and WASD to move. Press Space to rise and Shift to sink. Left click places a block and right click fires your blaster. Fly through a power-up to pick it up, then press E to use it.'],
 };
 export function menu(onPick, onSelect) {

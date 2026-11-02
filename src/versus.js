@@ -18,6 +18,9 @@ import { connect, makeRoomCode } from './net.js';
 import { LOADOUTS, STUN } from './weapons.js';
 import { buildShip, Pilot } from './ship.js';
 
+// after a stun, a ship can't be stunned again for this long
+export const IMMUNE = 1;
+
 export const TEAM = [
   { name: 'Coral', color: 0xff6a3d, glow: 0xffb08a, css: '#ff6a3d' },
   { name: 'Violet', color: 0x7a5cf0, glow: 0xb9a8ff, css: '#7a5cf0' },
@@ -172,7 +175,7 @@ export function createVersus(game) {
     const sh = { seat: k, mesh, pilot, target: null, stun: 0, shield: false };
     if (s.kind === 'bot' && V.isHost) {
       sh.ai = AI.agent(pilot, { owner: teamOf(k), seat: k, pattern: L.build.pattern, rate: L.build.rate * 2.6,
-        blastRate: L.blast.rate * 1.8, aggro: s.role === 'bomber' || s.role === 'laser' ? 0.5 : 0.3, defend: false });
+        blastRate: L.blast.rate * 1.8, aggro: s.role === 'bomber' || s.role === 'laser' ? 0.5 : 0.3, defend: false, dash: true });
     }
     V.ships.set(k, sh);
   }
@@ -185,8 +188,11 @@ export function createVersus(game) {
 
   // every frame while playing
   V.update = dt => {
+    clock += dt;
     // remote ships glide toward their latest pose
     for (const sh of V.ships.values()) {
+      // blinking: the second after a stun, when it can't be stunned again
+      if (sh.immune > 0) { sh.immune = Math.max(0, sh.immune - dt); sh.mesh.visible = sh.immune > IMMUNE || sh.immune === 0 || Math.floor(performance.now() / 70) % 2 === 0; }
       if (sh.ai) {
         if (Items.inSmoke(sh.pilot.pos)) sh.pilot.update(dt, new THREE.Vector3(), sh.pilot.fwd.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), dt * 3), null);
         else AI.brawl(sh.ai, dt, game.aiCtx);
@@ -206,7 +212,7 @@ export function createVersus(game) {
     if ((poseT += dt) > 1 / POSE_HZ) {
       poseT = 0;
       const p = game.pilot;
-      const m = [V.seat, ...p.pos.toArray().map(r2), ...p.fwd.toArray().map(r3), ...p.vel.toArray().map(r2), p.stun > 0 ? 1 : 0, game.S.fx.shield > 0 ? 1 : 0];
+      const m = [V.seat, ...p.pos.toArray().map(r2), ...p.fwd.toArray().map(r3), ...p.vel.toArray().map(r2), p.stun > 0 ? 1 : 0, game.S.fx.shield > 0 || p.dashing ? 1 : 0];
       if (!V.isHost) V.net?.sendPose(m);
     }
     if (!V.isHost) return;
@@ -217,8 +223,8 @@ export function createVersus(game) {
     hostItems(dt);
     if ((stateT += dt) > 1 / STATE_HZ) {
       stateT = 0;
-      const ships = [[V.seat, ...game.pilot.pos.toArray().map(r2), ...game.pilot.fwd.toArray().map(r3), ...game.pilot.vel.toArray().map(r2), game.pilot.stun > 0 ? 1 : 0, game.S.fx.shield > 0 ? 1 : 0]];
-      for (const sh of V.ships.values()) ships.push([sh.seat, ...sh.pilot.pos.toArray().map(r2), ...sh.pilot.fwd.toArray().map(r3), ...sh.pilot.vel.toArray().map(r2), sh.pilot.stun > 0 ? 1 : 0, sh.shield ? 1 : 0]);
+      const ships = [[V.seat, ...game.pilot.pos.toArray().map(r2), ...game.pilot.fwd.toArray().map(r3), ...game.pilot.vel.toArray().map(r2), game.pilot.stun > 0 ? 1 : 0, game.S.fx.shield > 0 || game.pilot.dashing ? 1 : 0]];
+      for (const sh of V.ships.values()) ships.push([sh.seat, ...sh.pilot.pos.toArray().map(r2), ...sh.pilot.fwd.toArray().map(r3), ...sh.pilot.vel.toArray().map(r2), sh.pilot.stun > 0 ? 1 : 0, sh.shield || sh.pilot.dashing ? 1 : 0]);
       V.net?.sendState({ t: r2(V.left), sc: V.score, ships });
     }
     if ((opsT += dt) > 1 / OPS_HZ) flush();
@@ -289,17 +295,26 @@ export function createVersus(game) {
   V.hitSegment = (a, b, team, kind, bySeat, segDist) => {
     for (const [seat, pos, shielded] of allShips()) if (teamOf(seat) !== team && segDist(pos, a, b) < 1 && !shielded) stun(seat, STUN[kind], pos, bySeat);
   };
+  // host clock for stun immunity: seat -> time it ends
+  const immuneUntil = {};
+  let clock = 0;
+  const immune = seat => (immuneUntil[seat] || 0) > clock;
   function allShips() {
-    return [[V.seat, game.pilot.pos, game.S.fx.shield > 0], ...[...V.ships.values()].map(sh => [sh.seat, sh.pilot.pos, sh.shield])];
+    // a shield, a dash in progress or a fresh stun makes a ship unstunnable
+    return [[V.seat, game.pilot.pos, game.S.fx.shield > 0 || game.pilot.dashing || immune(V.seat)],
+      ...[...V.ships.values()].map(sh => [sh.seat, sh.pilot.pos, sh.shield || sh.pilot.dashing || immune(sh.seat)])];
   }
   function stun(seat, dur, from, bySeat) {
     if (V.stats[bySeat]) V.stats[bySeat].stuns++;
-    op(['stun', seat, dur, from.toArray().map(r2)]);
-    applyStun(seat, dur, from);
+    immuneUntil[seat] = clock + dur + IMMUNE;
+    op(['stun', seat, dur, from.toArray().map(r2), bySeat]);
+    applyStun(seat, dur, from, bySeat);
   }
-  function applyStun(seat, dur, from) {
+  function applyStun(seat, dur, from, bySeat) {
+    game.onStun(seat, bySeat, V.ships.get(seat)?.mesh);
     if (seat === V.seat) return game.stunMe(dur, new THREE.Vector3(...(from.toArray ? from.toArray() : from)));
     const sh = V.ships.get(seat);
+    if (sh) sh.immune = dur + IMMUNE;
     if (sh) { sh.pilot.stun = dur; sh.pilot.vel.add(sh.pilot.pos.clone().sub(new THREE.Vector3(...(from.toArray ? from.toArray() : from))).setLength(10)); }
   }
   V.smoke = pos => { if (V.isHost) { Items.throwSmoke(pos); op(['smoke', pos.toArray().map(r2)]); } else V.net?.sendAct({ k: 'smoke', pos: pos.toArray() }); };
@@ -329,7 +344,7 @@ export function createVersus(game) {
       case 'r': game.mirrorRemove(o[1]); break;
       case 's': game.mirrorSeal(o[2], o[1], o[3]); V.score[0] += o[3][0]; V.score[1] += o[3][1]; break;
       case 'shot': if (o[1] !== V.seat) game.mirrorShot(o[1], o[2], o[3], o[4], o[5]); break;
-      case 'stun': applyStun(o[1], o[2], o[3]); break;
+      case 'stun': applyStun(o[1], o[2], o[3], o[4]); break;
       case 'is': Items.spawnAt(o[1], o[2], o[3]); break;
       case 'it': Items.removeId(o[1]); if (o[2] === V.seat) game.gotItem(o[3]); break;
       case 'smoke': Items.throwSmoke(new THREE.Vector3(...o[1])); break;

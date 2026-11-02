@@ -23,6 +23,11 @@ function steer(p, to, wish) {
   return wish;
 }
 
+// pilots with `dash` set burn a charge to cover long gaps, like a person would
+function maybeDash(a, p, to, dt) {
+  if (a.dash && to.length() > 14 && p.dashN > 0 && p.stun <= 0 && Math.random() < dt * 1.5) p.tryDash(to);
+}
+
 function face(a, ctx) {
   const p = a.pilot;
   if (!a.face || !ctx.faceOpen(a.face) || a.hold <= 0) {
@@ -54,6 +59,7 @@ export function build(a, dt, ctx) {
     const side = new THREE.Vector3(n.y, n.z, n.x).multiplyScalar(Math.sin(a.orbit) * 0.8);
     const to = air.clone().addScaledVector(n, 5.5).add(side).sub(p.pos);
     steer(p, to, wish);
+    maybeDash(a, p, to, dt);
     // wedged in a notch: back straight out and pick another face
     a.stuck = p.vel.length() < 1 && to.length() > 3 && p.stun <= 0 ? a.stuck + dt : 0;
     if (a.stuck > 0.8) { a.bad.add(f); a.face = null; a.stuck = 0; p.vel.addScaledVector(p.pos.clone().normalize(), 10); }
@@ -131,7 +137,8 @@ export function brawl(a, dt, ctx) {
   if (!target) { a.mode = 'build'; return build(a, dt, ctx); }
   const lead = vel ? target.clone().addScaledVector(vel, target.distanceTo(p.pos) / 60) : target.clone();
   const hover = target.clone().add(target.clone().normalize().multiplyScalar(7));
-  const wish = steer(p, hover.sub(p.pos), new THREE.Vector3());
+  const go = hover.sub(p.pos), wish = steer(p, go, new THREE.Vector3());
+  maybeDash(a, p, go, dt);
   const aim = lead.sub(p.pos).normalize();
   if (a.blastCD <= 0 && aim.dot(p.fwd) > 0.985) { ctx.fireBlastAs(a, p.nose(), p.fwd); a.blastCD = a.blastRate; }
   p.update(dt, wish, aim, new THREE.Vector3(-aim.z, 0, aim.x).normalize());

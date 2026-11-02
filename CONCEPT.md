@@ -167,9 +167,12 @@ remembered.
 
 | Loadout | Build gun | Blaster |
 |---|---|---|
-| Rapid | 1 block, 0.085 s | bolt |
-| Cross | 5-block plus, 0.34 s | bolt that breaks a plus |
-| Laser | 1 block, 0.11 s | instant beam through every loose block and threat on the line, 3 damage, 0.55 s |
+| Rapid | 1 block, 0.15 s | bolt, 0.24 s |
+| Cross | 5-block plus, 0.5 s | bolt, 0.3 s |
+| Laser | 1 block, 0.19 s | instant beam through every loose block and threat on the line, 3 damage, 0.7 s |
+| Bomber | 1 block, 0.22 s | lobbed bomb, 1 s |
+
+(Rates slowed on 2026-11-01; see D17.)
 
 One energy pool of 120 feeds both guns. A block costs 1.5, a bolt 2.5, a cross
 shot 6, a laser 10. It refills at 95/s once you've held fire for 1.8 s, so it
@@ -244,6 +247,80 @@ bots.
   - name tags show role icons; no voice or chat
   - balance is untested with real people
 
+**D17 — Pace, dash and hit feel (Paul, 2026-11-01).**
+- **Slower start.** Every build gun fires more slowly: Rapid went from 0.085 s
+  to 0.15 s, Cross from 0.34 s to 0.5 s, Laser from 0.11 s to 0.19 s, and
+  Bomber from 0.13 s to 0.22 s. Blasters are about a third slower too.
+  - Tempo: the build gun speeds up 9% with each sealed layer, down to 55% of
+    its starting delay by layer 6. This keeps the late layers from dragging.
+  - Survival meteor waves start small and reach full size at about 50 seconds.
+- **The core starts as one block.** Layer 1 is six blocks, and the core then
+  grows as a diamond: 6, 18, 38, 66, 102, 146 blocks per layer (computed in
+  node with `grid.js`). You also spawn closer. With 8 or fewer faces open,
+  orange beacons show every face, so layer 1 teaches itself.
+- **Dash (Q).** Two charges, and each refills in 1.9 s. It throws the plane
+  toward the keys you hold, or where you look if you hold none. That's 40
+  units/s for 0.22 s, with a barrel roll, a white trail and a quick lens
+  punch. Hold Shift or Space with it to drop under or pop over the core.
+  - A dash slips through meteors and can't be stunned in Versus, so it is
+    also a dodge.
+  - The two charges show as arcs on the left of the crosshair, mirroring the
+    ammo arc on the right. They turn light blue when full, with a soft tick
+    when one refills.
+  - Versus bots and the title-screen pilot dash too. Containment's bots don't,
+    so its balance holds.
+- **Hit feel.**
+  - When your shot connects, a white hit marker snaps out on the crosshair
+    with a dry tick and a 35 ms freeze (rate-limited so a stream of breaks
+    doesn't stutter). A broken block flashes as a white pop before it
+    shatters, and a hit meteor or bot goes pure white for a frame.
+  - A kill gets a bigger coral marker, a second bright note, a 65 ms freeze
+    and a stronger shake.
+  - Firing gives a white muzzle pop, a camera nudge backwards and a small lens
+    punch, scaled up for blasts, lasers and bombs.
+  - Getting hit freezes the game for about 100 ms and turns your plane white.
+    The screen whites out, heaviest on the side the hit came from, and the
+    camera is shoved away from the hit with a hard shake. Sound effects go
+    muffled and the music ducks for about half a second, then they recover.
+  - A cracked core freezes for 140 ms with a white flash and a muffle.
+- **Balance, re-simulated** with the perfect-aim pilot (Survival) and the
+  wobbling defender (Containment), in headless Chromium:
+
+| Survival level | Layers | Score | Outcome |
+|---|---|---|---|
+| 1 | 7 | ~32,300 | survived both runs, no lives lost |
+| 2 | 5–6 | 10,000–19,000 | survived once, cracked at 1:35 once |
+| 3 | 4–5 | 6,000–11,700 | cracked at 1:25–1:44 |
+
+  Star lines moved to 1,500 / 4,000 / 9,000 (about 3, 4 and 5 sealed layers).
+
+| Containment defender | Layer timeline (s) | Critical at 7 layers |
+|---|---|---|
+| none | 4, 13, 27, 44, 64, 84, 107 | 1:47 |
+| weak (0.2) | 60, 110, 124, 141, 162, 185, 217 | 3:37 |
+| mid (0.5) | 73, 116, 130, 160, 184, 210, 237 | 3:57 |
+
+  Critical mass moved from 4 to 7 layers, because the small early layers seal
+  in seconds. That puts the curve back near the old one (1:26 / 3:15 / 4:18).
+
+**D18 — Close call, build assist, stun immunity (Paul picked brainstorm 1–3, 2026-11-01).**
+- **Close call.** If a dash takes you within about 1.4 units of a meteor, or
+  within 1.8 of an enemy bolt or bomb in Versus, you get the charge back. You
+  also hear a two-note chime, see a pale blue ring, and "Close call" rises out
+  of the crosshair.
+  - Solo adds 0.4 s of slow motion and 25 points.
+  - Versus gets a lens punch instead, because slow motion would slow the whole
+    match for everyone.
+  - It counts once per dash.
+- **Build assist.** If your aim doesn't already land on an open core face, the
+  shot snaps to the open face closest to your crosshair, within 3.2°. The face
+  has to point at you and be in clear line of sight. The ghost preview shows
+  the snapped spot, so you see it before you fire. Aiming straight at a loose
+  block still builds on it. Bots don't use it.
+- **Stun immunity (Versus).** After a stun ends, a ship can't be stunned again
+  for 1 s, and it blinks for that second. The host enforces it with its own
+  clock, so every player sees the same result.
+
 ## Modes (pitch → plan)
 
 | Mode | Status |
@@ -259,7 +336,7 @@ bots.
   the pitch, so Shrink can only *deny*. Option: a charged shot that can crack
   the *outermost* cemented layer only, which keeps the rule "sealed history is
   permanent." Recommend trying denial-only first: it may be enough.
-- **Q3 Where does it get hard?** Layer 3 already needs 222 faces. Either
+- **Q3 Where does it get hard?** (Mostly answered by D17: the one-block core grows 6, 18, 38, 66, 102 blocks a layer, and tempo speeds the gun up to match.) Originally: layer 3 already needed 222 faces. Either
   that's the difficulty curve (bigger layers, faster meteors), or blocks should
   scale up with the core (2×2 bricks from layer 3).
 - **Q4 Name.** "Strata" is a placeholder.
@@ -272,3 +349,43 @@ bots.
 - Not tested on a mid-range laptop for frame rate.
 - No multiplayer. Pocket Tactics / MISCHIEF / DOWNRIVER already have a trystero
   host-authoritative pattern to reuse.
+
+## Brainstorm: balance and fun (2026-11-01, not built; Paul decides)
+
+Ranked by how much each would add for the work it takes. 1–3 were built as D18.
+
+1. **Perfect dodge.** Dash through a meteor or an enemy bolt in its last
+   0.15 s and you get a short slow-motion beat and the charge back. It rewards
+   reading the blinking ring instead of only running from it, and it makes the
+   dash feel like a skill.
+2. **Build assist.** The block preview snaps to the nearest open face when
+   your aim is within a few degrees of it. Mouse aim at range is the hardest
+   part of the game for a new player, and this keeps the challenge in choosing
+   faces, not in pixel-hunting.
+3. **No stun-locks in Versus.** After a stun ends you get 1 s where you can't
+   be stunned again (your plane blinks). Four players focusing one person is
+   currently miserable, and the bot runs show about 15 stuns per bot per
+   minute.
+4. **Layer modifiers.** Each new layer can roll a rule that's shown in the
+   left tab: a gold layer worth double, a fragile layer whose blocks break in
+   one hit, or a windy layer where shots drift. It gives Survival runs variety,
+   like Tetris's speed changes.
+5. **Seal charges a super.** Each seal fills a meter. When it's full, press a
+   key to send a shockwave that clears every meteor and nibbler near the core.
+   It ties defence to the main loop (build to protect) instead of to aim.
+6. **Clean-seal bonus.** Seal a layer with no wasted blocks and earn ×1.5. It
+   rewards planning, and pushes against D2's thick-shell strategy, so the
+   choice gets sharper.
+7. **Comeback items in Versus.** Pickups spawn nearer the trailing team. It's
+   quiet rubber-banding that never touches the score rule.
+8. **Ramming.** A dash through the other team's loose blocks breaks up to two
+   of them, giving builders a way to fight back without switching loadout.
+9. **Daily seed.** The same meteor schedule for everyone each day, with your
+   best score kept per day. It's cheap replay value, and needs no server if
+   the scores stay local.
+10. **Unlock plane colours with stars.** Cosmetic only. It gives the stars a
+    use without selling power.
+
+Watch in real play:
+- Level 1 may now be too easy for a strong player.
+- Dash plus Super Speed is 1.9 × 40 units/s, which can overshoot the core.
