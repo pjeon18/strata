@@ -71,6 +71,8 @@ function bounds() {
   return box;
 }
 
+// the last analyzed bounds: every solid cell plus one cell of air all round
+export const solidBox = () => box;
 const inRegion = (x, y, z) => x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1 && z >= box.z0 && z <= box.z1;
 
 // Flood outside air, then count core faces it touches.

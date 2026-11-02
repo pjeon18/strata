@@ -10,7 +10,7 @@ import * as T from './threats.js';
 import * as Items from './items.js';
 import * as AI from './builder.js';
 import { PAL, Post, sky, sea, islands, clouds, lights, fxOnly, paint } from './look.js';
-import { buildShip, Pilot, DASH, flashShip, updateFlashes } from './ship.js';
+import { buildShip, Pilot, DASH, SWOOP, flashShip, updateFlashes } from './ship.js';
 import { sfx, isMuted, setMuted, startMusic, musicLevel, musicState, muffle } from './audio.js';
 import { LEVELS, pickKind, starsFor, bestStars, saveStars } from './levels.js';
 import { LOADOUTS, Energy, pattern, tempo } from './weapons.js';
@@ -172,7 +172,7 @@ function newRound(game = S.game) {
   pilot.reset(new THREE.Vector3(0, 1, 7.5), new THREE.Vector3(0, 0, -1));
   camPos.set(0, 2.5, 12.5);
   reanalyze(); hudIntegrity(); HUD.slot(null);
-  S.tut = game === 'tutorial' ? { n: 0, t: 0, cleared: 0, over: false, turned: 0, flown: 0, placed: 0, dashes: 0, again: 0 } : null;
+  S.tut = game === 'tutorial' ? { n: 0, t: 0, cleared: 0, over: false, turned: 0, flown: 0, placed: 0, dashes: 0, swoops: 0, again: 0 } : null;
   if (S.tut) tutStep(0); else HUD.tutor(null);
 }
 
@@ -473,6 +473,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyE' && S.mode === 'play' && !S.auto) useItem();
   if (e.code === 'KeyQ' && !e.repeat && S.mode === 'play' && !S.auto) dash();
+  if (!e.repeat && S.mode === 'play' && !S.auto) doubleTap(e.code, e.timeStamp / 1000);
   if (e.code === 'Escape' && S.mode === 'play' && !locked) setMode('pause');
   if (e.code === 'Enter' && S.mode === 'play' && S.game === 'tutorial') leaveTutorial('menu');
   if (S.mode === 'title' && S.screen === 'ready') {
@@ -746,9 +747,11 @@ function fly(dt) {
     autopilot(dt);
     pitch = Math.asin(THREE.MathUtils.clamp(pilot.fwd.y, -1, 1)); yaw = Math.atan2(-pilot.fwd.x, -pilot.fwd.z);
   } else {
+    swoopCamera();
     aimFwd(F); R.set(Math.cos(yaw), 0, -Math.sin(yaw));
     wishFromKeys(wishV);
     pilot.update(dt, wishV, F, R);
+    swoopCamera();
   }
   chaseCamera(dt);
   aimFwd(F);
@@ -793,8 +796,71 @@ function closeCall() {
   FX.ring(p, camera.position.clone().sub(p).normalize(), 0xbfefff, 3.2, 0.45);
   sfx.dodge(); HUD.pop('Close call');
 }
+// Swoop: double-tap A or D to arc round to the next face of the core, Space to
+// go over the top, Shift to go underneath. You arrive square to that face and
+// looking at the core. It costs a dash charge.
+const TAP = { KeyA: 'left', KeyD: 'right', Space: 'up', ShiftLeft: 'down', ShiftRight: 'down' }, DOUBLE = 0.3;
+const lastTap = {};
+// timed from when each key went down, so a slow frame can't split a double-tap
+function doubleTap(code, now) {
+  const way = TAP[code];
+  if (!way) return;
+  if (now - (lastTap[way] || 0) < DOUBLE) { lastTap[way] = 0; swoop(way); } else lastTap[way] = now;
+}
+const AXES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map(a => new THREE.Vector3(...a));
+const swoopAim = { y0: 0, dy: 0, p0: 0, p1: 0 };
+function swoop(way) {
+  if (pilot.swooping || pilot.dashing) return;
+  aimFwd(F); R.set(Math.cos(yaw), 0, -Math.sin(yaw)); U.crossVectors(R, F);
+  const want = (way === 'left' || way === 'right' ? R : U).clone().multiplyScalar(way === 'left' || way === 'down' ? -1 : 1);
+  const from = pilot.pos.clone().normalize();
+  // the face you're on is the axis you're most over; the next one is the
+  // neighbouring face most in the direction you asked for
+  const here = AXES.reduce((a, b) => (b.dot(from) > a.dot(from) ? b : a));
+  let to = null, best = 0.2;
+  for (const n of AXES) if (Math.abs(n.dot(here)) < 0.5 && n.dot(want) > best) { best = n.dot(want); to = n; }
+  if (!to) return;
+  // orbit clear of everything solid, and end at a working distance
+  const b = G.solidBox(), safe = Math.hypot(Math.max(-b.x0, b.x1) + 0.5, Math.max(-b.y0, b.y1) + 0.5, Math.max(-b.z0, b.z1) + 0.5);
+  const r0 = pilot.pos.length(), r1 = THREE.MathUtils.clamp(r0, safe + 1.5, safe + 9);
+  // where you end up and where you look: the crosshair lands on the core
+  let end = to.clone().multiplyScalar(r1), y1 = yaw, p1;
+  if (Math.abs(to.y) > 0.9) {
+    // over or under: keep your heading and tip almost straight down (or up);
+    // the camera can't look quite vertical, so the plane stops a little off
+    // centre to put the core in the crosshair
+    p1 = -Math.sign(to.y) * 1.45;
+    const f = aimFwd(new THREE.Vector3(), y1, p1), r = new THREE.Vector3(Math.cos(y1), 0, -Math.sin(y1)), u = new THREE.Vector3().crossVectors(r, f);
+    const s = (r1 + 1.75 * u.dot(to) + 1.25 * r.dot(to)) / -f.dot(to);
+    end = f.multiplyScalar(-s).addScaledVector(u, -1.75).addScaledVector(r, -1.25);
+  } else [y1, p1] = aimAtCore(end, yaw);
+  if (!pilot.trySwoop(from, end.clone().normalize(), r0, end.length(), way === 'left' ? 1 : -1)) { if (pilot.stun <= 0) noAmmo(); return; }
+  Object.assign(swoopAim, { y0: yaw, dy: THREE.MathUtils.euclideanModulo(y1 - yaw + Math.PI, Math.PI * 2) - Math.PI, p0: pitch, p1 });
+  if (S.tut) S.tut.swoops++;
+  sfx.swoop();
+  S.fovKick += 6;
+  FX.puff(pilot.pos, 0xffffff, 6, 0.6, 0.35, 0.3);
+}
+// the heading and pitch whose chase camera, from a plane at p, looks through the
+// core's centre; looking straight up or down keeps the heading you had
+function aimAtCore(p, y) {
+  let pt = 0;
+  const f = new THREE.Vector3(), r = new THREE.Vector3(), u = new THREE.Vector3(), d = new THREE.Vector3();
+  for (let k = 0; k < 5; k++) {
+    aimFwd(f, y, pt); r.set(Math.cos(y), 0, -Math.sin(y)); u.crossVectors(r, f);
+    d.copy(p).addScaledVector(f, -5.6).addScaledVector(u, 1.75).addScaledVector(r, 1.25).negate().normalize();
+    pt = THREE.MathUtils.clamp(Math.asin(d.y), -1.45, 1.45);
+    if (Math.abs(d.y) < 0.9) y = Math.atan2(-d.x, -d.z);
+  }
+  return [y, pt];
+}
+function swoopCamera() {
+  if (!pilot.swooping) return;
+  const k = pilot.swoopK;
+  yaw = swoopAim.y0 + swoopAim.dy * k; pitch = swoopAim.p0 + (swoopAim.p1 - swoopAim.p0) * k;
+}
 function dashTrail() {
-  if (!pilot.dashing) return;
+  if (!pilot.dashing && !pilot.swooping) return;
   const b = pilot.mesh.userData.body;
   for (const s of [-1, 1]) FX.dot(b.localToWorld(tmp.set(s * 1.1, 0, -0.1)), 0xffffff, 0.16, 0.32);
   FX.dot(pilot.pos, 0xbfefff, 0.3, 0.2);
@@ -905,6 +971,7 @@ const TUTORIAL = [
   { text: 'Point at the core and left-click to stick a block on it.', keys: ['Left click'], done: u => u.placed > 0 || S.sealed > 0 },
   { text: 'Cover every face the orange rings mark. When no sky can reach the core, the layer seals.', keys: ['Left click'], done: () => S.sealed > 0 },
   { text: 'Press Q to dash. While you dash, meteors and shots pass straight through you.', keys: ['Q'], done: u => u.dashes > 0 },
+  { text: 'Double-tap D to swoop round to the next face. Double-tap Space to swoop over the top.', keys: ['D D', 'Space Space'], done: u => u.swoops > 0 },
   { text: 'A meteor is falling toward the core. Follow the arrow and right-click to blast it.', keys: ['Right click'], enter: () => T.spawnMeteor(5, 'slow'), done: () => S.meteorsDown > 0 },
 ];
 const tutored = () => { try { return !!localStorage.getItem('strata-tutored'); } catch { return true; } };

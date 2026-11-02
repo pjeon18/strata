@@ -59,6 +59,11 @@ export function updateFlashes(dt) {
 // in one direction with a barrel roll, and nothing can stun you mid-dash.
 export const DASH = { charges: 2, recharge: 1.9, speed: 40, time: 0.22 };
 
+// Swoop: an arc round the core to the next face over, on a dash charge.
+// Fast off the mark, then it eases onto the face; the plane barrel-rolls.
+export const SWOOP = { time: 0.55, bulge: 1.4 };
+const easeSwoop = u => 1 - (1 - u) ** 3;
+
 const RADIUS = 0.62, MAX_R = 46;
 
 export class Pilot {
@@ -67,13 +72,33 @@ export class Pilot {
     this.pos = new THREE.Vector3(); this.vel = new THREE.Vector3();
     this.fwd = new THREE.Vector3(0, 0, -1);
     this.stun = 0; this.roll = 0; this.spin = 0; this.boost = 1;
-    this.dashN = DASH.charges; this.dashCD = 0; this.dashT = 0; this.dashRoll = 1;
+    this.dashN = DASH.charges; this.dashCD = 0; this.dashT = 0; this.dashRoll = 1; this.sw = null;
   }
   reset(p, fwd) {
     this.pos.copy(p); this.vel.set(0, 0, 0); this.fwd.copy(fwd); this.stun = 0; this.boost = 1;
-    this.dashN = DASH.charges; this.dashCD = 0; this.dashT = 0;
+    this.dashN = DASH.charges; this.dashCD = 0; this.dashT = 0; this.sw = null;
   }
   get dashing() { return this.dashT > 0; }
+  get swooping() { return !!this.sw; }
+  // how far through the swoop, eased (the camera turns on the same curve)
+  get swoopK() { return this.sw ? easeSwoop(Math.min(1, this.sw.t / SWOOP.time)) : 1; }
+  // from, to: unit directions out from the core centre; r0 → r1 is the radius
+  trySwoop(from, to, r0, r1, roll) {
+    const axis = new THREE.Vector3().crossVectors(from, to);
+    if (this.stun > 0 || this.dashN < 1 || axis.lengthSq() < 1e-8) return false;
+    this.dashN--;
+    this.sw = { from: from.clone(), axis: axis.normalize(), angle: from.angleTo(to), r0, r1, roll, t: 0 };
+    return true;
+  }
+  swoopStep(dt) {
+    const w = this.sw;
+    w.t += dt;
+    const u = Math.min(1, w.t / SWOOP.time), k = easeSwoop(u);
+    const next = w.from.clone().applyAxisAngle(w.axis, w.angle * k).multiplyScalar(w.r0 + (w.r1 - w.r0) * k + SWOOP.bulge * Math.sin(Math.PI * u));
+    this.vel.copy(next).sub(this.pos).divideScalar(dt);
+    this.pos.copy(next);
+    if (u >= 1) this.sw = null;
+  }
   // dir: world direction, any length
   tryDash(dir, right) {
     if (this.stun > 0 || this.dashN < 1 || dir.lengthSq() < 1e-6) return false;
@@ -90,12 +115,16 @@ export class Pilot {
     const accel = this.stun > 0 ? 0 : 70 * this.boost;
     this.dashT = Math.max(0, this.dashT - dt);
     if (this.dashN < DASH.charges && (this.dashCD += dt) >= DASH.recharge) { this.dashN++; this.dashCD = 0; }
-    this.vel.addScaledVector(wish, accel * dt);
-    if (!this.dashing) this.vel.multiplyScalar(Math.exp(-(this.stun > 0 ? 2 : 5.5) * dt));
-    // over the cap (after a dash) bleeds off smoothly instead of snapping
-    const max = (this.dashing ? DASH.speed : 17) * this.boost, sp = this.vel.length();
-    if (sp > max) this.vel.setLength(max + (sp - max) * Math.exp(-9 * dt));
-    this.pos.addScaledVector(this.vel, dt);
+    // a hit knocks you out of a swoop
+    if (this.sw && this.stun > 0) this.sw = null;
+    if (this.sw) { if (dt > 0) this.swoopStep(dt); } else {
+      this.vel.addScaledVector(wish, accel * dt);
+      if (!this.dashing) this.vel.multiplyScalar(Math.exp(-(this.stun > 0 ? 2 : 5.5) * dt));
+      // over the cap (after a dash) bleeds off smoothly instead of snapping
+      const max = (this.dashing ? DASH.speed : 17) * this.boost, sp = this.vel.length();
+      if (sp > max) this.vel.setLength(max + (sp - max) * Math.exp(-9 * dt));
+      this.pos.addScaledVector(this.vel, dt);
+    }
     this.collide();
     const r = this.pos.length();
     if (r > MAX_R) { this.pos.setLength(MAX_R); this.vel.addScaledVector(this.pos.clone().normalize(), -this.vel.dot(this.pos) / r); }
@@ -110,7 +139,7 @@ export class Pilot {
     m.position.copy(this.pos);
     m.lookAt(this.pos.clone().add(this.fwd));
     const { body, props } = m.userData;
-    const barrel = this.dashing ? this.dashRoll * Math.PI * 2 * (1 - this.dashT / DASH.time) ** 0.7 : 0;
+    const barrel = this.dashing ? this.dashRoll * Math.PI * 2 * (1 - this.dashT / DASH.time) ** 0.7 : this.sw ? this.sw.roll * Math.PI * 2 * this.swoopK : 0;
     body.rotation.z = this.roll + barrel + (this.stun > 0 ? this.spin : 0);
     body.position.y = Math.sin(performance.now() * 0.004) * 0.04;
     for (const p of props) p.rotation.z += dt * (18 + this.vel.length() * 2);

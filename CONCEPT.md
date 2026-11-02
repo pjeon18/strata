@@ -453,3 +453,23 @@ finishing ends on a Ready card whose main button is Play Level 1. Either way
 `strata-tutored` is saved, so later visits open the menu. How to play has a
 Play the tutorial button for anyone who wants it again.
 
+
+**D21 notes: the swoop.** Paul's idea (2026-11-02). Getting from one face of
+the core to the next was the hardest thing in the game: you fly a wide loop,
+then turn the camera back while moving, and the loop gets longer every layer.
+Double-tapping A or D now swoops you round to the neighbouring face; Space
+goes over the top and Shift goes underneath. "Next face" means the cube face
+next to the one you're most over, in the direction you tapped (relative to
+the camera). The arc takes 0.55 seconds. It starts fast and eases onto the
+face, bulging slightly outward. It stays outside everything solid and ends
+1.5 to 9 units past the solid bounds. The camera turns on the same curve and
+ends with the crosshair on the core's centre. For over and under, the camera
+can't look quite straight down, so the plane stops a little off centre to
+keep the core in the crosshair. The plane barrel-rolls and the camera stays
+level. Each swoop costs a dash charge, so two in a row take you to the
+opposite face. A swoop doesn't pass through meteors (that's still Q's job),
+and a hit knocks you out of it. Double-taps are timed from when each key
+went down, within 0.3 seconds, so a slow frame can't split one. Paul's
+halfway stop is left out for now: on single taps it would fire whenever you
+nudge sideways, and halfway leaves you on an edge where neither face is
+square to you. The tutorial gained a swoop step (seven steps now).

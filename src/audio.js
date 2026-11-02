@@ -117,6 +117,7 @@ export const sfx = {
   // you got hit: a body thud, a crunch and a thin ringing tone
   hurt: () => { noise(0.3, 0.4, 900); tone(80, 0.3, 'sine', 0.35, 0, 0.45); tone(3100, 0.7, 'sine', 0.025, 0.04); },
   dash: () => { noise(0.22, 0.16, 5200); tone(240, 0.2, 'sawtooth', 0.04, 0, 2.6); },
+  swoop: () => { noise(0.45, 0.12, 3600); tone(300, 0.5, 'triangle', 0.06, 0, 2); },
   dashReady: () => tone(1320, 0.05, 'sine', 0.035),
   dodge: () => { tone(988, 0.12, 'triangle', 0.1); tone(1480, 0.22, 'triangle', 0.08, 0.06); noise(0.18, 0.05, 6000); },
 };

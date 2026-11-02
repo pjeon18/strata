@@ -125,7 +125,7 @@ export function ammo(frac, { charging, empty, infinite }) {
 
 export function keys(game) {
   const k = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
-  $('keys').innerHTML = [k('Mouse', 'Aim'), k('WASD', 'Fly'), k('Space', 'Up'), k('Shift', 'Down'), k('Q', 'Dash'),
+  $('keys').innerHTML = [k('Mouse', 'Aim'), k('WASD', 'Fly'), k('Space', 'Up'), k('Shift', 'Down'), k('Q', 'Dash'), k('Tap twice', 'Swoop'),
     ...(game === 'containment' ? [k('Click', 'Blast')] : [k('Left', 'Place'), k('Right', 'Blast')]), k('E', 'Item'), k('M', 'Mute'), k('H', 'Hide')].join('');
 }
 
@@ -236,7 +236,7 @@ const MODES = {
   survival: ['1 player · 3 levels', 'Shoot blocks onto the core until it is completely covered. That seals the layer and scores points. Each level lasts two minutes, and your final score decides how many stars you earn.'],
   versus: ['2 to 4 players · online', 'Two teams build on the same core. When a layer seals, its points go to each team by how many of its blocks they placed. Break the other team’s blocks and stun their pilots. Empty seats can be filled with bots.'],
   containment: ['1 player · endless', 'Builder bots are trying to grow the core. Shoot them and the blocks they place. If they seal seven layers, the core goes critical and the run ends.'],
-  how: ['Controls and rules', 'Use your mouse to look around and WASD to fly. Space rises, Shift sinks and Q dashes. Left click places a block and right click fires your blaster. Open this for the three rules that matter.'],
+  how: ['Controls and rules', 'Use your mouse to look around and WASD to fly. Space rises, Shift sinks and Q dashes. Double-tap a direction to swoop round to the next face of the core. Left click places a block and right click fires your blaster. Open this for the three rules that matter.'],
   settings: ['Your setup', 'Change mouse sensitivity, turn on inverted aiming, set the music and effects volume, tone down screen shake or switch to faster graphics.'],
 };
 export function menu(onPick, onSelect) {
@@ -290,7 +290,7 @@ export function result({ big, unit, record, cols, total, stars, next, nextLevel 
 // How to play: the three rule cards are static; the controls row is filled here
 export function how(onBack) {
   const k = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
-  $('controls').innerHTML = [k('Mouse', 'Aim'), k('W A S D', 'Fly'), k('Space', 'Rise'), k('Shift', 'Sink'), k('Q', 'Dash'),
+  $('controls').innerHTML = [k('Mouse', 'Aim'), k('W A S D', 'Fly'), k('Space', 'Rise'), k('Shift', 'Sink'), k('Q', 'Dash'), k('A A / D D', 'Swoop to the next face'), k('Space Space / Shift Shift', 'Swoop over or under'),
     k('Left click', 'Place a block'), k('Right click', 'Blaster'), k('E', 'Use a power-up'), k('Esc', 'Pause')].join('');
   $('how').querySelector('[data-back]').onclick = onBack;
   addEventListener('keydown', e => { if (!$('how').classList.contains('hidden') && (e.code === 'Escape' || e.code === 'Backspace')) onBack(); });
