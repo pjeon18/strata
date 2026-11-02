@@ -161,7 +161,7 @@ function newRound(game = S.game) {
   pilot.mesh.visible = true;
   Object.assign(S, { score: 0, shown: 0, layer: 1, sealed: 0, integrity: 3, slow: 0, shake: 0, flash: 0, ending: 0, stop: 0, fovKick: 0, dashN: 2, immune: 0,
     crit: 0, time: 0, downed: 0, botT: 35, cemented: 0, meteorsDown: 0, cleared: 0,
-    left: L.time, waveT: L.firstWave, wave: 0, queue: [], droneT: 0, itemT: 8,
+    left: L.time, waveT: L.firstWave, wave: 0, queue: [], droneT: 0, itemT: game === 'tutorial' ? Infinity : 8,
     held: null, fx: { big: 0, boost: 0, shield: 0 } });
   energy.reset();
   if (game === 'containment') addBot();
@@ -172,6 +172,8 @@ function newRound(game = S.game) {
   pilot.reset(new THREE.Vector3(0, 1, 7.5), new THREE.Vector3(0, 0, -1));
   camPos.set(0, 2.5, 12.5);
   reanalyze(); hudIntegrity(); HUD.slot(null);
+  S.tut = game === 'tutorial' ? { n: 0, t: 0, cleared: 0, over: false, turned: 0, flown: 0, placed: 0, dashes: 0, again: 0 } : null;
+  if (S.tut) tutStep(0); else HUD.tutor(null);
 }
 
 // ---------- the big beat ----------
@@ -410,6 +412,7 @@ function updateShots(dt) {
         // theirs climbs too, lower and quieter: you can hear them closing in
         if (S.game === 'versus' ? s.seat !== S.seat : s.owner) sfx.botPlace(prog); else sfx.place(prog);
         FX.puff(s.to, 0xffffff, 3 + placed, 0.7, 0.32, 0.3);
+        if (S.tut && !s.owner) S.tut.placed += placed;
         reanalyze();
       } else if (s.seat === S.seat || (s.seat < 0 && !s.owner)) { sfx.fizzle(); FX.puff(s.to, 0xffffff, 2, 0.3, 0.25, 0.2); }
     } else if (s.kind === 'bomb') {
@@ -471,6 +474,11 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE' && S.mode === 'play' && !S.auto) useItem();
   if (e.code === 'KeyQ' && !e.repeat && S.mode === 'play' && !S.auto) dash();
   if (e.code === 'Escape' && S.mode === 'play' && !locked) setMode('pause');
+  if (e.code === 'Enter' && S.mode === 'play' && S.game === 'tutorial') leaveTutorial('menu');
+  if (S.mode === 'title' && S.screen === 'ready') {
+    if (e.code === 'Enter') playLevelOne();
+    if (e.code === 'Escape') go('menu');
+  }
   if (e.code === 'Space') e.preventDefault();
 });
 addEventListener('keyup', e => keys.delete(e.code));
@@ -485,6 +493,7 @@ addEventListener('mousemove', e => {
   const k = 0.0021 * prefs.sens;
   yaw -= e.movementX * k;
   pitch = THREE.MathUtils.clamp(pitch - e.movementY * k * (prefs.invert ? -1 : 1), -1.45, 1.45);
+  if (S.tut) S.tut.turned += (Math.abs(e.movementX) + Math.abs(e.movementY)) * k;
 });
 canvas.addEventListener('mousedown', e => {
   if (S.mode !== 'play') return;
@@ -513,7 +522,7 @@ function setMode(m, scr = S.screen) {
 const go = scr => { sfx.select(); setMode('title', scr); };
 function start(game = S.game) {
   sfx.unlock(); lock();
-  HUD.wipe(() => { newRound(game); setMode('play'); HUD.callout('Go!', '', 'good'); });
+  HUD.wipe(() => { newRound(game); setMode('play'); if (game !== 'tutorial') HUD.callout('Go!', '', 'good'); });
 }
 function toMenu() { HUD.clearCallout(); HUD.wipe(() => { newRound('survival'); setMode('title', 'menu'); }); }
 
@@ -521,9 +530,18 @@ HUD.init();
 // phones and tablets can't fly it: say so, and offer to watch instead
 const touchOnly = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
 if (touchOnly) $('pressText').textContent = 'Tap to start';
-$('splash').onclick = () => { sfx.unlock(); startMusic(); go(touchOnly ? 'touch' : 'menu'); };
+// a first visit goes straight into the tutorial; after that, the menu
+$('splash').onclick = () => {
+  sfx.unlock(); startMusic();
+  if (touchOnly) return go('touch');
+  if (!tutored()) return start('tutorial');
+  go('menu');
+};
 $('watchIt').onclick = () => { sfx.select(); document.body.classList.add('watch'); HUD.wipe(() => { S.auto = true; newRound('survival'); setMode('play'); }); };
 HUD.how(() => go('menu'));
+$('howTutorial').onclick = () => { sfx.select(); start('tutorial'); };
+$('readyPlay').onclick = () => playLevelOne();
+$('readyMenu').onclick = () => go('menu');
 // settings opens over the menu or the pause screen and goes back to whichever it was
 const syncSettings = HUD.settings(prefs, setPref, () => { sfx.select(); setMode(S.mode, S.screen); });
 const openSettings = () => { sfx.select(); syncSettings(); HUD.screen('settings'); };
@@ -548,7 +566,7 @@ $('again').onclick = () => {
   if (V.isHost) { V.rematch(); toLobby(); } else toLobby();
 };
 $('modes').onclick = () => { if (S.game === 'versus') V.leave(); toMenu(); };
-$('quit').onclick = () => { if (S.game === 'versus') V.leave(); toMenu(); };
+$('quit').onclick = () => { if (S.game === 'versus') V.leave(); if (S.game === 'tutorial') markTutored(); toMenu(); };
 $('resume').onclick = () => { setMode('play'); lock(); };
 $('restart').onclick = () => { sfx.select(); start(); };
 $('pauseSettings').onclick = openSettings;
@@ -752,6 +770,7 @@ function dash() {
   if (dir.lengthSq() < 0.01) dir.copy(F);
   if (!pilot.tryDash(dir, R)) { if (pilot.stun <= 0) noAmmo(); return; }
   S.dodged = false;
+  if (S.tut) S.tut.dashes++;
   sfx.dash();
   S.fovKick += 4;
   FX.ring(pilot.pos, dir, 0xffffff, 2.2, 0.3);
@@ -809,11 +828,14 @@ function play(dt) {
   energy.update(dt); S.emptyCD -= dt;
   updateItems(dt);
   if (S.game === 'versus') versusPlay(dt);
-  else if (S.game === 'containment') contain(dt); else survive(dt);
+  else if (S.game === 'containment') contain(dt);
+  else if (S.game === 'tutorial') tutor(dt);
+  else survive(dt);
   HUD.ammo(energy.frac, { charging: energy.charging, empty: energy.empty > 0, infinite: energy.infinite > 0 });
 }
 
-function survive(dt) {
+// left click builds, right click blasts (Survival and the tutorial)
+function buildGuns(dt) {
   const L = LOADOUTS[S.loadout];
   const kind = S.fx.big > 0 ? 'big' : L.build.pattern;
   const tgt = aimTarget(camera.position, F);
@@ -832,7 +854,10 @@ function survive(dt) {
     if (mouseR) trySecondary(dt, G.raycast(camera.position, F, 60));
     else S.blastCD -= dt;
   }
+}
 
+function survive(dt) {
+  buildGuns(dt);
   // the level: a clock and waves of meteors
   const LV = S.level;
   S.left -= dt; S.time += dt;
@@ -859,6 +884,9 @@ function survive(dt) {
     S.droneT -= dt;
     if (S.droneT <= 0 && T.drones.length < LV.nibblers) { T.spawnDrone(); S.droneT = 9; }
   }
+  threats(dt);
+}
+function threats(dt) {
   // a dash slips straight through a meteor
   T.update(dt, S.t, { destroyBlock, impact, inSmoke: Items.inSmoke }, pilot.dashing ? NOWHERE : pilot.pos, (p, o) => {
     // a shield breaks the rock instead of you
@@ -867,6 +895,58 @@ function survive(dt) {
     sfx.stun(); hurtMe(p, 1);
   });
 }
+
+// ---------- tutorial ----------
+// First flight: one instruction at a time, each cleared by doing it. Nothing
+// can be lost here: there's no clock and meteors don't crack the core.
+const TUTORIAL = [
+  { text: 'Move the mouse to look around.', keys: ['Mouse'], done: u => u.turned > 1.4 },
+  { text: 'Fly with W, A, S and D. Space climbs and Shift drops.', keys: ['W', 'A', 'S', 'D', 'Space', 'Shift'], done: u => u.flown > 7 },
+  { text: 'Point at the core and left-click to stick a block on it.', keys: ['Left click'], done: u => u.placed > 0 || S.sealed > 0 },
+  { text: 'Cover every face the orange rings mark. When no sky can reach the core, the layer seals.', keys: ['Left click'], done: () => S.sealed > 0 },
+  { text: 'Press Q to dash. While you dash, meteors and shots pass straight through you.', keys: ['Q'], done: u => u.dashes > 0 },
+  { text: 'A meteor is falling toward the core. Follow the arrow and right-click to blast it.', keys: ['Right click'], enter: () => T.spawnMeteor(5, 'slow'), done: () => S.meteorsDown > 0 },
+];
+const tutored = () => { try { return !!localStorage.getItem('strata-tutored'); } catch { return true; } };
+const markTutored = () => { try { localStorage.setItem('strata-tutored', '1'); } catch {} };
+function tutStep(n) {
+  const u = S.tut, st = TUTORIAL[n];
+  Object.assign(u, { n, t: 0, cleared: 0 });
+  st.enter?.();
+  HUD.tutor({ n, total: TUTORIAL.length, text: st.text, keys: st.keys });
+}
+function tutor(dt) {
+  buildGuns(dt);
+  threats(dt);
+  const u = S.tut, st = TUTORIAL[u.n];
+  if (u.over) return;
+  u.t += dt;
+  u.flown += pilot.vel.length() * dt;
+  // the meteor landed before you got it: send another
+  if (st.enter && !T.meteors.length && !st.done(u) && (u.again += dt) > 1.2) {
+    u.again = 0; st.enter(); notice('That one landed. Here comes another.', 'lilac');
+  }
+  // a beat on screen before it can clear, then a beat to see the tick
+  if (!u.cleared && u.t > 0.8 && st.done(u)) {
+    u.cleared = 1e-4; sfx.pickup();
+    HUD.tutor({ n: u.n, total: TUTORIAL.length, text: st.text, keys: st.keys, done: true });
+  } else if (u.cleared && (u.cleared += dt) > 1.1) {
+    if (u.n + 1 < TUTORIAL.length) tutStep(u.n + 1); else tutDone();
+  }
+}
+function tutDone() {
+  S.tut.over = true; markTutored();
+  HUD.tutor(null);
+  HUD.callout('Ready!', 'Tutorial complete', 'good'); sfx.seal();
+  setTimeout(() => S.game === 'tutorial' && leaveTutorial('ready'), 2400);
+}
+// skip (Enter) goes to the menu; finishing goes to the Ready card
+function leaveTutorial(to) {
+  markTutored();
+  HUD.clearCallout();
+  HUD.wipe(() => { newRound('survival'); setMode('title', to); document.exitPointerLock?.(); });
+}
+function playLevelOne() { S.level = LEVELS[0]; start('survival'); }
 
 // ---------- versus ----------
 function buildMine(tgt, kind) {
@@ -997,7 +1077,7 @@ function impact(p, cracked) {
   sfx.impact();
   const near = Math.max(0, 1 - camera.position.distanceTo(p) / 30);
   S.shake = Math.max(S.shake, 0.25 + near * 0.5);
-  if (cracked && !S.ending) {
+  if (cracked && !S.ending && S.game !== 'tutorial') {
     S.integrity--; sfx.crack(); S.shake = 0.9;
     hitstop(0.14); S.flash = Math.max(S.flash, 0.45); muffle(0.6);
     hudIntegrity();
@@ -1047,7 +1127,7 @@ function gameOver() {
 // ---------- hud ----------
 function hudGame() {
   HUD.keys(S.game);
-  HUD.clock(clock(S.game === 'containment' ? 0 : S.level.time));
+  HUD.clock(S.game === 'tutorial' ? null : clock(S.game === 'containment' ? 0 : S.level.time));
   HUD.tab(null);
 }
 function hudSeal() {
@@ -1055,7 +1135,7 @@ function hudSeal() {
   const covered = S.a.totalFaces - S.a.exposedFaces, c = S.game === 'containment';
   if (S.game === 'versus') return HUD.meter(covered, S.a.totalFaces, S.team === 1);
   HUD.meter(covered, S.a.totalFaces, c);
-  HUD.tag(c ? `Layer ${S.layer}` : `Level ${S.level.id} · Layer ${S.layer}`);
+  HUD.tag(c ? `Layer ${S.layer}` : S.game === 'tutorial' ? `Tutorial · Layer ${S.layer}` : `Level ${S.level.id} · Layer ${S.layer}`);
   if (S.mode !== 'play' || noticeT > 0) return;
   // the left-edge tab names the moment: nearly sealed, or one from critical
   if (c) HUD.tab(S.crit === CRIT - 1 ? 'One more and it goes critical' : null, 'violet');
@@ -1202,7 +1282,7 @@ else {
 requestAnimationFrame(tick);
 
 window.__strata = {
-  S, G, pilot, T, Items, energy, music: musicState, pause: () => setMode('pause'),
+  S, G, pilot, camera, T, Items, energy, music: musicState, pause: () => setMode('pause'),
   step: (dt = 1 / 60, n = 1) => { for (let k = 0; k < n; k++) frame(dt); },
   start: (game = 'survival', level = 1, loadout) => { S.level = LEVELS[level - 1]; if (loadout) S.loadout = loadout; newRound(game); setMode('play'); },
   screen: scr => setMode('title', scr), over: () => gameOver(),

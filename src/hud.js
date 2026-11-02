@@ -129,6 +129,21 @@ export function keys(game) {
     ...(game === 'containment' ? [k('Click', 'Blast')] : [k('Left', 'Place'), k('Right', 'Blast')]), k('E', 'Item'), k('M', 'Mute'), k('H', 'Hide')].join('');
 }
 
+// tutorial card: progress dots, one instruction, the keys it needs; a tick when it's done
+let tutN = -1;
+export function tutor(step) {
+  const el = $('tut');
+  $('hud').classList.toggle('tut-on', !!step);
+  if (!step) { tutN = -1; return; }
+  const { n, total, text, keys = [], done } = step;
+  $('tutDots').innerHTML = Array.from({ length: total }, (_, k) => `<i class="${k < n || (k === n && done) ? 'on' : k === n ? 'now' : ''}"></i>`).join('');
+  $('tutCount').textContent = `Step ${n + 1} of ${total}`;
+  $('tutText').textContent = text;
+  $('tutKeys').innerHTML = keys.map(k => `<kbd>${k}</kbd>`).join('');
+  el.classList.toggle('done', !!done);
+  if (n !== tutN) { tutN = n; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); }
+}
+
 export function arrows(list, theirs) {
   $('arrows').innerHTML = list.map(({ x, y, a }) =>
     `<i class="arrow ${theirs ? 'theirs' : ''}" style="left:${x}px;top:${y}px;transform:translate(-50%,-50%) rotate(${a}rad)"></i>`).join('');
@@ -169,11 +184,11 @@ export const flash = a => { $('flash').style.opacity = a; };
 
 // ---------- screens ----------
 // the loading cover is separate: it fades out over whatever screen is underneath
-const SCREENS = ['splash', 'menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result', 'how', 'settings', 'touch'];
+const SCREENS = ['splash', 'menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result', 'how', 'settings', 'touch', 'ready'];
 export function screen(name) {
   for (const s of SCREENS) $(s).classList.toggle('hidden', s !== name);
   $('hud').classList.toggle('hidden', !(name === null || name === 'pause'));
-  document.body.classList.toggle('blurred', ['menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result', 'how', 'settings', 'touch'].includes(name));
+  document.body.classList.toggle('blurred', ['menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result', 'how', 'settings', 'touch', 'ready'].includes(name));
 }
 
 // holographic slab sweeping across; `mid` runs while the screen is covered

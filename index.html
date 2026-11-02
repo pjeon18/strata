@@ -52,6 +52,11 @@
     <div class="slot" id="slot"><div class="bubble" id="slotIcon"></div><kbd>E</kbd><span class="slot-name" id="slotName">Empty</span></div>
     <div class="effects" id="effects"></div>
     <div class="hints" id="keys"></div>
+    <div class="tut" id="tut">
+      <div class="tut-top"><div class="tut-dots" id="tutDots"></div><span class="tut-count" id="tutCount"></span><div class="tut-keys" id="tutKeys"></div><span class="tut-skip"><kbd>Enter</kbd>Skip</span></div>
+      <p id="tutText"></p>
+      <i class="tut-tick"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></i>
+    </div>
   </div>
 
   <div id="callout" class="callout"></div>
@@ -116,7 +121,7 @@
   </div>
 
   <div id="how" class="screen hidden pick">
-    <div class="pick-head"><button class="back" data-back>‹</button><span class="wordmark">How to play</span></div>
+    <div class="pick-head"><button class="back" data-back>‹</button><span class="wordmark">How to play</span><button class="opt coral sel tut-go" id="howTutorial">Play the tutorial</button></div>
     <div class="cards rules">
       <div class="card rule"><div class="art seal"><svg viewBox="0 0 120 80"><rect x="47" y="27" width="26" height="26" rx="5" fill="#1a2a52"/><rect x="47" y="3" width="26" height="22" rx="5" fill="#fff"/><rect x="21" y="27" width="24" height="26" rx="5" fill="#fff"/><rect x="75" y="27" width="24" height="26" rx="5" fill="#fff"/><rect x="48.5" y="56.5" width="23" height="19" rx="4" fill="none" stroke="#fff" stroke-width="2.5" stroke-dasharray="5 4"/><path d="M60 63v6M57 66h6" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div>
         <div class="label">Seal the layer</div><p>Shoot blocks onto every face of the core. The moment no sky can reach it, the layer seals into the core and scores.</p></div>
@@ -149,6 +154,15 @@
       <div class="panel-head"><span class="wordmark">Strata</span></div>
       <p class="touch-text">Strata is flown with a mouse and keyboard. Open this page on a computer to play it. You can still watch a round play itself here.</p>
       <button class="opt coral sel" id="watchIt">Watch it play</button>
+    </div>
+  </div>
+
+  <div id="ready" class="screen hidden">
+    <div class="panel small">
+      <div class="panel-head"><span class="wordmark">Ready</span></div>
+      <p class="panel-text">You can fly, build, seal a layer and guard the core. Level 1 gives you two minutes and a few slow meteors. Seal as many layers as you can before the clock runs out.</p>
+      <button class="opt coral sel" id="readyPlay">Play Level 1</button>
+      <button class="opt grey" id="readyMenu">Menu</button>
     </div>
   </div>
 

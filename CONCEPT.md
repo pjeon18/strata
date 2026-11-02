@@ -415,7 +415,7 @@ From a screen-by-screen audit after D18. Paul picks the order past batch 1.
 **Batch 2: medium, each needs one call from Paul**
 7. A first-flight tutorial on the first visit: fly to the core, place a block,
    seal layer one, dash, shoot a meteor. Prompts come from what you do, not a
-   wall of text. (Call: on by default for first visits, skippable?)
+   wall of text. (Built as D20: on by default for first visits, skippable.)
 8. A three-two-one countdown before each run so the first meteor never lands
    while you're still finding the core. (Call: Paul may prefer the snap start.)
 9. Music that builds: it speeds and brightens in the last 20 seconds and when
@@ -440,3 +440,16 @@ apply changes live). Fast graphics means one pixel per CSS pixel, no shadows
 and no bloom. The audit also caught two bugs: the radar threw when its canvas
 had no size (it now skips drawing), and the shader warm-up left a wireframe
 preview cube sitting on the core during the title screen.
+
+**D20 notes: the tutorial.** It's a fourth game type, `tutorial`, with six
+steps: look, fly, place a block, seal layer one, dash, and blast a meteor. Each
+step clears when you do the thing, not on a timer. A step stays on screen for
+at least 0.8 seconds, then shows a tick for about a second before the next one
+comes in, so a fast player still sees every instruction. Nothing can be lost:
+there's no clock, no power-ups, and meteors don't crack the core. If the
+meteor lands before you hit it, another one comes. A first visit on a computer
+goes straight from the splash into the tutorial. Enter skips to the menu, and
+finishing ends on a Ready card whose main button is Play Level 1. Either way
+`strata-tutored` is saved, so later visits open the menu. How to play has a
+Play the tutorial button for anyone who wants it again.
+

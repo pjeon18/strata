@@ -474,7 +474,7 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 
 /* ---------- touch devices ---------- */
 .panel.touch { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(400px, 90vw); animation: none; text-align: center; }
-.touch-text { color: var(--text); font-size: 17px; font-weight: 700; line-height: 1.55; margin: 0 4px 6px; }
+.touch-text, .panel-text { color: var(--text); font-size: 17px; font-weight: 700; line-height: 1.55; margin: 0 4px 6px; }
 .panel.touch .opt.sel { transform: none; }
 .panel.touch .opt.sel::before { display: none; }
 
@@ -496,3 +496,27 @@ body.watch .radar, body.watch .pills, body.watch .slot, body.watch .effects, bod
   body.watch .track { flex: 1; width: auto; }
   body.watch .tab { top: 186px; font-size: 16px; }
 }
+
+/* ---------- tutorial ---------- */
+.tut { position: absolute; left: 0; right: 0; bottom: 20px; margin: 0 auto; width: min(680px, 92vw); padding: 14px 24px 16px; border-radius: 22px;
+  background: linear-gradient(180deg, #fff, #f1f2f6); box-shadow: 0 16px 36px rgba(20, 40, 90, .3); display: none; }
+#hud.tut-on .tut { display: block; }
+#hud.tut-on .hints { display: none; }
+.tut.in { animation: tutIn .5s var(--spring); }
+@keyframes tutIn { from { opacity: 0; transform: translateY(26px) scale(.96); } }
+.tut-top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; font-size: 13px; font-weight: 900; color: #8a8fa6; }
+.tut-dots { display: flex; gap: 5px; }
+.tut-dots i { width: 22px; height: 6px; border-radius: 99px; background: #e3e6ee; transition: background .3s; }
+.tut-dots i.now { background: #ffc7ad; }
+.tut-dots i.on { background: linear-gradient(90deg, var(--coral-a), var(--coral-b)); }
+.tut-skip { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+.tut-skip kbd { background: #e9ebf2; box-shadow: none; color: #6b7088; }
+.tut p { margin: 0; padding-right: 48px; font-size: 20px; font-weight: 800; line-height: 1.4; color: var(--navy-solid); }
+.tut-keys { display: flex; gap: 6px; margin-left: 6px; }
+.tut-keys:empty { display: none; }
+.tut-keys kbd { font-size: 12px; padding: 3px 11px; color: #fff; background: var(--navy-solid); box-shadow: 0 3px 0 rgba(26, 42, 82, .3); }
+.tut-tick { position: absolute; right: 20px; top: calc(50% + 14px); width: 38px; height: 38px; margin-top: -19px; border-radius: 50%; padding: 6px;
+  background: linear-gradient(135deg, var(--coral-a), var(--coral-b)); box-shadow: 0 6px 14px rgba(240, 48, 106, .3); opacity: 0; transform: scale(.4); }
+.tut.done .tut-tick { opacity: 1; transform: none; transition: opacity .15s, transform .45s var(--spring); }
+.tut.done p { color: #8a8fa6; transition: color .3s; }
+.pick-head .tut-go { width: auto; margin: 0 0 0 34px; padding: 11px 26px; font-size: 19px; }
