@@ -15,6 +15,7 @@ import { sfx, isMuted, setMuted, startMusic, musicLevel, musicState, muffle } fr
 import { LEVELS, pickKind, starsFor, bestStars, saveStars } from './levels.js';
 import { LOADOUTS, Energy, pattern, tempo } from './weapons.js';
 import { createVersus, TEAM, teamOf, IMMUNE } from './versus.js';
+import { prefs, onPrefs, set as setPref, reset as resetPrefs } from './settings.js';
 
 // ---------- scene ----------
 const canvas = document.getElementById('c');
@@ -69,7 +70,7 @@ const bombGeo = new THREE.SphereGeometry(0.34, 18, 12), bombMat = paint(0x3a2a4a
 const bombRingGeo = new THREE.TorusGeometry(0.4, 0.05, 8, 24), bombRingMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffd27a).multiplyScalar(1.8) });
 
 function resize() {
-  const dpr = Math.min(devicePixelRatio, 2), w = innerWidth, h = innerHeight;
+  const dpr = Math.min(devicePixelRatio, prefs.quality === 'low' ? 1 : 2), w = innerWidth, h = innerHeight;
   renderer.setPixelRatio(dpr); renderer.setSize(w, h, false);
   post.setSize(w, h, dpr);
   camera.aspect = w / h; camera.updateProjectionMatrix(); frameOffset();
@@ -92,6 +93,17 @@ const shots = [];
 const pending = new Set();
 const $ = id => document.getElementById(id);
 resize();
+// Fast graphics: one pixel per CSS pixel, no shadows, no bloom
+onPrefs((p, k) => {
+  if (k && k !== 'quality') return;
+  const low = p.quality === 'low';
+  post.bloom.enabled = !low;
+  if (renderer.shadowMap.enabled === low) {
+    renderer.shadowMap.enabled = !low;
+    scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
+  }
+  resize();
+});
 
 // ---------- feel ----------
 // Hit-stop freezes the world for a few frames so a hit lands. Small ones are
@@ -470,8 +482,9 @@ document.addEventListener('pointerlockchange', () => {
 });
 addEventListener('mousemove', e => {
   if (!locked) return;
-  yaw -= e.movementX * 0.0021;
-  pitch = THREE.MathUtils.clamp(pitch - e.movementY * 0.0021, -1.45, 1.45);
+  const k = 0.0021 * prefs.sens;
+  yaw -= e.movementX * k;
+  pitch = THREE.MathUtils.clamp(pitch - e.movementY * k * (prefs.invert ? -1 : 1), -1.45, 1.45);
 });
 canvas.addEventListener('mousedown', e => {
   if (S.mode !== 'play') return;
@@ -492,6 +505,7 @@ function setMode(m, scr = S.screen) {
   musicLevel(m === 'pause' ? 'quiet' : 'normal');
   frameOffset();
   HUD.screen(m === 'title' ? scr : m === 'pause' ? 'pause' : m === 'over' ? 'result' : null);
+  if (m === 'pause') $('restart').classList.toggle('hidden', S.game === 'versus');
   showGhost([]);
   if (m !== 'play') HUD.tab(null);
   if (m === 'play') hudIntegrity(); else if (m !== 'pause') HUD.danger(false);
@@ -504,10 +518,20 @@ function start(game = S.game) {
 function toMenu() { HUD.clearCallout(); HUD.wipe(() => { newRound('survival'); setMode('title', 'menu'); }); }
 
 HUD.init();
-$('splash').onclick = () => { sfx.unlock(); startMusic(); go('menu'); };
+// phones and tablets can't fly it: say so, and offer to watch instead
+const touchOnly = matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+if (touchOnly) $('pressText').textContent = 'Tap to start';
+$('splash').onclick = () => { sfx.unlock(); startMusic(); go(touchOnly ? 'touch' : 'menu'); };
+$('watchIt').onclick = () => { sfx.select(); document.body.classList.add('watch'); HUD.wipe(() => { S.auto = true; newRound('survival'); setMode('play'); }); };
+HUD.how(() => go('menu'));
+// settings opens over the menu or the pause screen and goes back to whichever it was
+const syncSettings = HUD.settings(prefs, setPref, () => { sfx.select(); setMode(S.mode, S.screen); });
+const openSettings = () => { sfx.select(); syncSettings(); HUD.screen('settings'); };
+$('setReset').onclick = () => { resetPrefs(); syncSettings(); };
 addEventListener('pointerdown', startMusic, { once: true });
 HUD.menu(pick => {
-  if (pick === 'how') return;
+  if (pick === 'how') return go('how');
+  if (pick === 'settings') return openSettings();
   if (pick === 'versus') return go('rooms');
   S.game = pick;
   if (pick === 'survival') go('levels'); else go('loadout');
@@ -526,6 +550,9 @@ $('again').onclick = () => {
 $('modes').onclick = () => { if (S.game === 'versus') V.leave(); toMenu(); };
 $('quit').onclick = () => { if (S.game === 'versus') V.leave(); toMenu(); };
 $('resume').onclick = () => { setMode('play'); lock(); };
+$('restart').onclick = () => { sfx.select(); start(); };
+$('pauseSettings').onclick = openSettings;
+$('nextLevel').onclick = () => { S.level = LEVELS[S.level.id]; start(); };
 
 // ---------- camera ----------
 const camPos = new THREE.Vector3(0, 6, 20);
@@ -1006,7 +1033,10 @@ function gameOver() {
     const L = S.level, stars = starsFor(L, S.score);
     saveStars(L.id, stars);
     HUD.refreshLevelStars(LEVELS, bestStars);
+    const ORD = ['first', 'second', 'third'];
+    const next = stars < 3 ? `You needed ${(L.stars[stars] - Math.round(S.score)).toLocaleString()} more points for the ${ORD[stars]} star.` : 'You earned all three stars on this level.';
     HUD.result({ big: total, unit: `Level ${L.id} · ${L.name}`, record: best(`survival-${L.id}`, Math.round(S.score)), stars,
+      next, nextLevel: !S.auto && L.id < LEVELS.length && bestStars(L.id) >= 1,
       cols: [['Layers', S.sealed], ['Blocks', S.cemented], ['Meteors', S.meteorsDown]], total });
     for (let k = 0; k < stars; k++) setTimeout(() => sfx.star(k), 900 + k * 280);
   }
@@ -1102,10 +1132,10 @@ function frame(rdt) {
   if (noticeT > 0 && (noticeT -= rdt) <= 0) { HUD.tab(null); hudSeal(); }
 
   S.shake = Math.max(0, S.shake - rdt * 1.8);
-  const s = S.shake * S.shake * 0.35;
+  const s = S.shake * S.shake * 0.35 * prefs.shake;
   camera.position.x += (Math.random() - 0.5) * s; camera.position.y += (Math.random() - 0.5) * s;
   // directional kick (recoil, getting hit) springs back
-  camera.position.add(S.kick); S.kick.multiplyScalar(Math.exp(-11 * rdt));
+  camera.position.addScaledVector(S.kick, prefs.shake); S.kick.multiplyScalar(Math.exp(-11 * rdt));
   S.fovKick *= Math.exp(-9 * rdt);
   S.flash = Math.max(0, S.flash - rdt * 2.2);
   HUD.flash(S.flash * S.flash);
@@ -1137,7 +1167,7 @@ function warmUp() {
   shield.visible = true; ghosts[0].visible = true;
   renderer.compile(scene, camera);
   post.render(scene, camera);
-  shield.visible = false;
+  shield.visible = false; ghosts[0].visible = false;
   newRound('survival');
 }
 

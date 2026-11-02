@@ -1,13 +1,15 @@
 // Tiny synth for feedback sounds only. The place blip climbs in pitch as the
 // layer fills, so you can hear yourself closing in on a seal.
+import { onPrefs } from './settings.js';
+
 let ctx = null, master = null, muffler = null;
-let muted = false;
+let muted = false, sfxVol = 0.8, musicVol = 0.8;
 try { muted = localStorage.getItem('strata-muted') === '1'; } catch {}
 export const isMuted = () => muted;
 export function setMuted(m) {
   muted = m;
   try { localStorage.setItem('strata-muted', m ? '1' : '0'); } catch {}
-  if (master) master.gain.setTargetAtTime(m ? 0 : 0.5, ctx.currentTime, 0.02);
+  if (master) master.gain.setTargetAtTime(m ? 0 : 0.5 * sfxVol, ctx.currentTime, 0.02);
   music.muted = m;
 }
 
@@ -16,7 +18,7 @@ export function setMuted(m) {
 const music = new Audio(`${import.meta.env.BASE_URL}music/slam.mp3`);
 music.loop = true; music.preload = 'auto'; music.muted = muted;
 const LEVEL = { normal: 0.32, quiet: 0.1 };
-let target = LEVEL.normal, fade = 0;
+let target = LEVEL.normal, level = 'normal', fade = 0;
 export const musicState = () => ({ playing: !music.paused, volume: +music.volume.toFixed(2), muted: music.muted });
 export function startMusic() {
   if (!music.paused) return;
@@ -25,7 +27,7 @@ export function startMusic() {
 }
 // glide the volume instead of jumping: pause ducks it, resume brings it back
 export function musicLevel(which) {
-  target = LEVEL[which];
+  level = which; target = LEVEL[which] * musicVol;
   clearInterval(fade);
   fade = setInterval(() => {
     const v = music.volume + (target - music.volume) * 0.18;
@@ -42,12 +44,12 @@ export function muffle(dur = 0.6) {
   if (music.paused) return;
   const back = target;
   music.volume = Math.min(music.volume, back * 0.35);
-  setTimeout(() => { if (target === back) musicLevel(back === LEVEL.quiet ? 'quiet' : 'normal'); }, dur * 600);
+  setTimeout(() => { if (target === back) musicLevel(level); }, dur * 600);
 }
 function ac() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5;
+    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.5 * sfxVol;
     // getting hit closes this filter for a moment: everything sounds underwater
     muffler = ctx.createBiquadFilter(); muffler.type = 'lowpass'; muffler.frequency.value = 20000;
     master.connect(muffler).connect(ctx.destination);
@@ -79,6 +81,13 @@ function noise(dur, vol = 0.2, freq = 1200, when = 0) {
 }
 
 const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+// the settings sliders: effects scale the synth's master, music scales both duck levels
+onPrefs((p, k) => {
+  sfxVol = p.sfx; musicVol = p.music;
+  if (master && !muted) master.gain.setTargetAtTime(0.5 * sfxVol, ctx.currentTime, 0.02);
+  if (k === 'music' && !music.paused) musicLevel(level);
+});
+
 const note = (root, step) => root * 2 ** (SCALE[Math.min(step, SCALE.length - 1)] / 12);
 
 export const sfx = {

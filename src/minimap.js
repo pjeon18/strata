@@ -6,6 +6,8 @@ const RANGE = 34;
 export function draw(cv, { yaw, me, meColor = '#ff6a3d', core, coreColor, items, meteors, drones, ships }) {
   const dpr = Math.min(devicePixelRatio, 2);
   const W = cv.clientWidth;
+  // hidden (phone watch mode): nothing to draw, and a zero-size disc would throw
+  if (W < 8) return;
   if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = W * dpr; }
   const c = cv.getContext('2d'), R = W / 2;
   c.setTransform(dpr, 0, 0, dpr, 0, 0);

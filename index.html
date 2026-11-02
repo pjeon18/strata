@@ -4,6 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Strata</title>
+  <meta name="description" content="Fly around a floating core and shoot blocks onto it until it is sealed in, while meteors try to crack it. Three solo levels, an endless Containment mode and online 2v2 Versus." />
+  <meta property="og:title" content="Strata" />
+  <meta property="og:description" content="Fly around a floating core and shoot blocks onto it until it is sealed in, while meteors try to crack it." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://pjeon18.github.io/strata/" />
+  <meta property="og:image" content="https://pjeon18.github.io/strata/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="theme-color" content="#4fb3ff" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='.3' y2='1'%3E%3Cstop offset='0' stop-color='%234fb3ff'/%3E%3Cstop offset='1' stop-color='%231a3fb0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Crect x='22' y='22' width='20' height='20' rx='4' fill='%23ff7a3d'/%3E%3Crect x='22' y='8' width='20' height='12' rx='4' fill='%23fff'/%3E%3Crect x='22' y='44' width='20' height='12' rx='4' fill='%23fff'/%3E%3Crect x='8' y='22' width='12' height='20' rx='4' fill='%23fff'/%3E%3Crect x='44' y='22' width='12' height='20' rx='4' fill='%23fff'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/src/hud.css" />
 </head>
 <body>
@@ -52,7 +63,7 @@
   <div id="splash" class="screen hidden">
     <div class="band"></div>
     <div class="logo"><span class="word"><i style="--k:0">S</i><i style="--k:1">t</i><i style="--k:2">r</i><i style="--k:3">a</i><i style="--k:4">t</i><i style="--k:5">a</i></span></div>
-    <div class="press"><span class="ico" data-icon="mouse"></span>Click to start</div>
+    <div class="press"><span class="ico" data-icon="mouse"></span><span id="pressText">Click to start</span></div>
   </div>
 
   <div id="menu" class="screen hidden">
@@ -62,7 +73,7 @@
       <button class="opt violet" data-pick="containment">Containment</button>
       <button class="opt teal" data-pick="versus">Versus</button>
       <hr />
-      <div class="panel-foot"><button class="opt grey" data-pick="how">How to play</button></div>
+      <div class="panel-foot"><button class="opt grey" data-pick="how">How to play</button><button class="opt grey" data-pick="settings">Settings</button></div>
     </div>
     <div class="desc" id="desc"><div class="desc-meta" id="descMeta"></div><p id="descText"></p></div>
     <div class="hints menu-hints"><span><kbd>Hover</kbd>Select</span><span><kbd>Click</kbd>OK</span></div>
@@ -104,10 +115,49 @@
     <div class="lobby-foot"><p id="lobbyNote"></p><button class="opt grey" id="fillBots">Fill empty seats with bots</button><button class="opt coral sel" id="startMatch">Start</button></div>
   </div>
 
+  <div id="how" class="screen hidden pick">
+    <div class="pick-head"><button class="back" data-back>‹</button><span class="wordmark">How to play</span></div>
+    <div class="cards rules">
+      <div class="card rule"><div class="art seal"><svg viewBox="0 0 120 80"><rect x="47" y="27" width="26" height="26" rx="5" fill="#1a2a52"/><rect x="47" y="3" width="26" height="22" rx="5" fill="#fff"/><rect x="21" y="27" width="24" height="26" rx="5" fill="#fff"/><rect x="75" y="27" width="24" height="26" rx="5" fill="#fff"/><rect x="48.5" y="56.5" width="23" height="19" rx="4" fill="none" stroke="#fff" stroke-width="2.5" stroke-dasharray="5 4"/><path d="M60 63v6M57 66h6" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div>
+        <div class="label">Seal the layer</div><p>Shoot blocks onto every face of the core. The moment no sky can reach it, the layer seals into the core and scores.</p></div>
+      <div class="card rule"><div class="art guard"><svg viewBox="0 0 120 80"><rect x="58" y="30" width="34" height="34" rx="6" fill="#1a2a52"/><path d="M60 33l9 7-3 7 8 5-2 7" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 4l22 16M8 14l24 12M26 0l16 18" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".5"/><circle cx="50" cy="28" r="11" fill="#fff"/></svg></div>
+        <div class="label">Guard the core</div><p>A meteor that hits bare core cracks it. Three cracks end the run, and every seal mends one. Blast meteors before they land.</p></div>
+      <div class="card rule"><div class="art zip"><svg viewBox="0 0 120 80"><path d="M6 40h52M14 29h34M14 51h34" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".5"/><circle cx="34" cy="40" r="15" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 5"/><path d="M64 40c0-5 13-10 28-10l14 10-14 10c-15 0-28-5-28-10z" fill="#fff"/><path d="M80 31l-6-12h8l10 12M80 49l-6 12h8l10-12" fill="#fff"/></svg></div>
+        <div class="label">Dash through</div><p>Press Q to dash. You pass straight through meteors and shots while dashing, and a close call gives the charge back.</p></div>
+    </div>
+    <div class="controls" id="controls"></div>
+    <div class="hints menu-hints"><span><kbd>Esc</kbd>Back</span></div>
+  </div>
+
+  <div id="settings" class="screen hidden">
+    <div class="panel settings">
+      <div class="panel-head"><button class="back" id="settingsBack">‹</button><span class="wordmark">Settings</span></div>
+      <label class="set"><span>Mouse sensitivity</span><input type="range" id="setSens" min="0.4" max="2" step="0.05" /><b id="setSensV"></b></label>
+      <label class="set toggle"><span>Invert up and down</span><input type="checkbox" id="setInvert" /><i></i></label>
+      <hr />
+      <label class="set"><span>Music</span><input type="range" id="setMusic" min="0" max="1" step="0.05" /><b id="setMusicV"></b></label>
+      <label class="set"><span>Effects</span><input type="range" id="setSfx" min="0" max="1" step="0.05" /><b id="setSfxV"></b></label>
+      <hr />
+      <label class="set"><span>Screen shake</span><input type="range" id="setShake" min="0" max="1" step="0.05" /><b id="setShakeV"></b></label>
+      <div class="set seg"><span>Graphics</span><div class="segs" id="setQuality"><button data-q="high">High</button><button data-q="low">Fast</button></div></div>
+      <button class="mini reset" id="setReset">Reset to defaults</button>
+    </div>
+  </div>
+
+  <div id="touch" class="screen hidden">
+    <div class="panel small touch">
+      <div class="panel-head"><span class="wordmark">Strata</span></div>
+      <p class="touch-text">Strata is flown with a mouse and keyboard. Open this page on a computer to play it. You can still watch a round play itself here.</p>
+      <button class="opt coral sel" id="watchIt">Watch it play</button>
+    </div>
+  </div>
+
   <div id="pause" class="screen hidden">
     <div class="panel small">
       <div class="panel-head"><span class="wordmark">Paused</span></div>
       <button class="opt coral sel" id="resume">Resume</button>
+      <button class="opt grey" id="restart">Restart</button>
+      <button class="opt grey" id="pauseSettings">Settings</button>
       <button class="opt grey" id="quit">Modes</button>
       <hr />
       <div class="credit">
@@ -123,8 +173,9 @@
     <div class="result-body">
       <div class="stars" id="rStars"></div>
       <div class="badge"><b id="rBig">0</b><span id="rUnit">points</span><em id="rRecord">New record!</em></div>
+      <p class="next-star" id="rNext"></p>
       <div class="table"><div class="head" id="rHead"></div><div class="row" id="rRow"></div><div id="rRows"></div></div>
-      <div class="actions"><button class="opt coral sel" id="again">Fly again</button><button class="opt grey" id="modes">Modes</button></div>
+      <div class="actions"><button class="opt coral sel hidden" id="nextLevel">Next level</button><button class="opt coral sel" id="again">Fly again</button><button class="opt grey" id="modes">Modes</button></div>
     </div>
   </div>
 

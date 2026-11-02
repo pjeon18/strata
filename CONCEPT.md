@@ -343,7 +343,7 @@ bots.
 
 ## Known gaps in this slice
 
-- Desktop only (pointer lock). No touch or gamepad yet.
+- Desktop only (pointer lock). Phones get a screen that says so and offers watch mode (D19). No touch controls or gamepad yet.
 - Core cells render as individual boxes, so faint seam ticks appear on cemented
   faces. A merged surface mesh would remove them and scale better.
 - Not tested on a mid-range laptop for frame rate.
@@ -389,3 +389,54 @@ Ranked by how much each would add for the work it takes. 1–3 were built as D18
 Watch in real play:
 - Level 1 may now be too easy for a strong player.
 - Dash plus Super Speed is 1.9 × 40 units/s, which can overshoot the core.
+
+## Polish plan: from slice to finished game (2026-11-01)
+
+From a screen-by-screen audit after D18. Paul picks the order past batch 1.
+
+**Batch 1: small fixes that every finished game has (built as D19)**
+1. How to play works. The menu button currently does nothing. It opens a
+   screen with the controls (including Dash) and the three rules a new player
+   needs: covering the core seals a layer, meteors that hit bare core crack it,
+   and a dash slips through anything.
+2. Settings. Mouse sensitivity, invert Y, music and effects volume, screen
+   shake and graphics quality, saved between visits. They open from the menu
+   and from pause.
+3. Pause gets Restart and Settings, so a bad start doesn't mean three screens
+   of menus.
+4. The result screen says how many points the next star needs, and offers the
+   next level once you have a star on this one.
+5. Phones and tablets get a clear screen that says Strata needs a mouse and
+   keyboard, with a button to watch it play itself, instead of a menu that
+   leads to a game they can't fly.
+6. A tab icon and a link preview card, so a shared Versus invite link shows
+   the game instead of a bare URL.
+
+**Batch 2: medium, each needs one call from Paul**
+7. A first-flight tutorial on the first visit: fly to the core, place a block,
+   seal layer one, dash, shoot a meteor. Prompts come from what you do, not a
+   wall of text. (Call: on by default for first visits, skippable?)
+8. A three-two-one countdown before each run so the first meteor never lands
+   while you're still finding the core. (Call: Paul may prefer the snap start.)
+9. Music that builds: it speeds and brightens in the last 20 seconds and when
+   the core has one life left. Needs a second stem or a playback-rate change.
+10. Level gating: earn a star to open the next level. (Call: gates hurt
+    portfolio visitors who want to see Level 3.)
+11. Merged core mesh, which removes the seam lines on cemented faces and keeps
+    frame rate up past layer 6.
+12. Automatic quality: drop the render resolution when the frame rate dips.
+
+**Big: pick one or two**
+13. Touch controls (virtual stick, aim drag, fire and dash buttons). Opens the
+    game to everyone who clicks the portfolio link on a phone.
+14. Layer modifiers and the seal-charged shockwave (brainstorm 4 and 5) for
+    run-to-run variety.
+15. Daily seed with a local best per day, plus plane colours unlocked with
+    stars (brainstorm 9 and 10).
+16. Grow vs Shrink (needs Q2).
+
+**D19 notes.** Settings live in `src/settings.js` (one saved object, listeners
+apply changes live). Fast graphics means one pixel per CSS pixel, no shadows
+and no bloom. The audit also caught two bugs: the radar threw when its canvas
+had no size (it now skips drawing), and the shader warm-up left a wireframe
+preview cube sitting on the core during the title screen.

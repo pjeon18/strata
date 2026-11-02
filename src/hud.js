@@ -169,11 +169,11 @@ export const flash = a => { $('flash').style.opacity = a; };
 
 // ---------- screens ----------
 // the loading cover is separate: it fades out over whatever screen is underneath
-const SCREENS = ['splash', 'menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result'];
+const SCREENS = ['splash', 'menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result', 'how', 'settings', 'touch'];
 export function screen(name) {
   for (const s of SCREENS) $(s).classList.toggle('hidden', s !== name);
   $('hud').classList.toggle('hidden', !(name === null || name === 'pause'));
-  document.body.classList.toggle('blurred', ['menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result'].includes(name));
+  document.body.classList.toggle('blurred', ['menu', 'levels', 'loadout', 'rooms', 'lobby', 'pause', 'result', 'how', 'settings', 'touch'].includes(name));
 }
 
 // holographic slab sweeping across; `mid` runs while the screen is covered
@@ -221,7 +221,8 @@ const MODES = {
   survival: ['1 player · 3 levels', 'Shoot blocks onto the core until it is completely covered. That seals the layer and scores points. Each level lasts two minutes, and your final score decides how many stars you earn.'],
   versus: ['2 to 4 players · online', 'Two teams build on the same core. When a layer seals, its points go to each team by how many of its blocks they placed. Break the other team’s blocks and stun their pilots. Empty seats can be filled with bots.'],
   containment: ['1 player · endless', 'Builder bots are trying to grow the core. Shoot them and the blocks they place. If they seal seven layers, the core goes critical and the run ends.'],
-  how: ['Controls', 'Use your mouse to look around and WASD to move. Press Space to rise and Shift to sink. Left click places a block and right click fires your blaster. Fly through a power-up to pick it up, then press E to use it.'],
+  how: ['Controls and rules', 'Use your mouse to look around and WASD to fly. Space rises, Shift sinks and Q dashes. Left click places a block and right click fires your blaster. Open this for the three rules that matter.'],
+  settings: ['Your setup', 'Change mouse sensitivity, turn on inverted aiming, set the music and effects volume, tone down screen shake or switch to faster graphics.'],
 };
 export function menu(onPick, onSelect) {
   const c = chooser($('menu'), { onPick, onSelect, describe: k => band('desc', `${ICON.person}<span>${MODES[k][0]}</span>`, MODES[k][1]) });
@@ -254,8 +255,11 @@ export function loadouts(defs, onPick, onBack, onSelect) {
 }
 
 // Result: stars (levels only), big badge, one stats row, then actions.
-export function result({ big, unit, record, cols, total, stars }) {
+export function result({ big, unit, record, cols, total, stars, next, nextLevel }) {
   soloResultLabels();
+  $('rNext').textContent = next || '';
+  $('nextLevel').classList.toggle('hidden', !nextLevel);
+  $('again').classList.toggle('sel', !nextLevel); $('again').classList.toggle('grey', !!nextLevel); $('again').classList.toggle('coral', !nextLevel);
   $('rBig').textContent = big;
   $('rUnit').textContent = unit;
   $('rRecord').classList.toggle('hidden', !record);
@@ -266,6 +270,41 @@ export function result({ big, unit, record, cols, total, stars }) {
   $('rRow').innerHTML = `<span class="who">${ICON.plane}You</span>` + cols.map(c => `<span>${c[1]}</span>`).join('') + `<span class="tot">${total}</span>`;
   const card = $('result');
   card.classList.remove('in'); void card.offsetWidth; card.classList.add('in');
+}
+
+// How to play: the three rule cards are static; the controls row is filled here
+export function how(onBack) {
+  const k = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
+  $('controls').innerHTML = [k('Mouse', 'Aim'), k('W A S D', 'Fly'), k('Space', 'Rise'), k('Shift', 'Sink'), k('Q', 'Dash'),
+    k('Left click', 'Place a block'), k('Right click', 'Blaster'), k('E', 'Use a power-up'), k('Esc', 'Pause')].join('');
+  $('how').querySelector('[data-back]').onclick = onBack;
+  addEventListener('keydown', e => { if (!$('how').classList.contains('hidden') && (e.code === 'Escape' || e.code === 'Backspace')) onBack(); });
+}
+
+// Settings: every control writes straight to prefs, so changes apply live
+export function settings(prefs, set, onBack) {
+  const pct = v => `${Math.round(v * 100)}%`;
+  const range = (id, key, fmt) => {
+    const el = $(id), out = $(`${id}V`);
+    const paint = () => { el.style.setProperty('--v', `${((el.value - el.min) / (el.max - el.min)) * 100}%`); out.textContent = fmt(+el.value); };
+    el.value = prefs[key]; paint();
+    el.oninput = () => { set(key, +el.value); paint(); };
+    return () => { el.value = prefs[key]; paint(); };
+  };
+  const syncs = [
+    range('setSens', 'sens', v => `${v.toFixed(2)}×`),
+    range('setMusic', 'music', pct), range('setSfx', 'sfx', pct), range('setShake', 'shake', pct),
+  ];
+  const inv = $('setInvert');
+  inv.onchange = () => set('invert', inv.checked);
+  const segs = [...$('setQuality').querySelectorAll('button')];
+  const paintQ = () => segs.forEach(b => b.classList.toggle('on', b.dataset.q === prefs.quality));
+  segs.forEach(b => { b.onclick = () => { set('quality', b.dataset.q); paintQ(); }; });
+  const sync = () => { syncs.forEach(f => f()); inv.checked = prefs.invert; paintQ(); };
+  sync();
+  $('settingsBack').onclick = onBack;
+  addEventListener('keydown', e => { if (!$('settings').classList.contains('hidden') && e.code === 'Escape') onBack(); });
+  return sync;
 }
 
 export function init() {
@@ -354,6 +393,8 @@ export function versusResult(res, myTeam, isHost, LOADOUTS) {
   $('rBig').textContent = win < 0 ? 'Draw' : win === myTeam ? 'You win' : 'You lose';
   $('rUnit').textContent = `Coral ${a.toLocaleString()} · Violet ${b.toLocaleString()}`;
   $('rRecord').classList.add('hidden');
+  $('rNext').textContent = ''; $('nextLevel').classList.add('hidden');
+  $('again').classList.add('sel', 'coral'); $('again').classList.remove('grey');
   $('rHead').innerHTML = '<span></span><span>Points</span><span>Blocks</span><span>Breaks</span><span>Stuns</span>';
   $('rRow').innerHTML = '';
   const rows = res.seats.map((s, k) => s && { s, k, st: res.stats[k] || { pts: 0, blocks: 0, breaks: 0, stuns: 0 } }).filter(Boolean)
