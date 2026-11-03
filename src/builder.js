@@ -117,6 +117,8 @@ export function defend(a, dt, ctx) {
 // ctx adds: enemyBlocks(team), enemyShips(team), fireBlastAs(agent, from, dir)
 export function brawl(a, dt, ctx) {
   const p = a.pilot;
+  // a Shrink bot never builds: it hunts blocks and ships all match
+  if (a.noBuild) { a.mode = 'attack'; a.modeT = 1; }
   a.modeT = (a.modeT ?? 0) - dt;
   if (a.modeT <= 0) {
     a.mode = Math.random() < (a.aggro ?? 0.35) ? 'attack' : 'build';
@@ -133,6 +135,12 @@ export function brawl(a, dt, ctx) {
       const d = (G.cx(i) - p.pos.x) ** 2 + (G.cy(i) - p.pos.y) ** 2 + (G.cz(i) - p.pos.z) ** 2;
       if (d < ld) { ld = d; target = new THREE.Vector3(G.cx(i), G.cy(i), G.cz(i)); }
     }
+  }
+  if (!target && a.noBuild) {
+    // nothing to break yet: circle the core, watching
+    const go = p.pos.clone().setLength(13).applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.5).sub(p.pos);
+    const aim = p.pos.clone().negate().normalize();
+    return p.update(dt, steer(p, go, new THREE.Vector3()), aim, new THREE.Vector3(-aim.z, 0, aim.x).normalize());
   }
   if (!target) { a.mode = 'build'; return build(a, dt, ctx); }
   const lead = vel ? target.clone().addScaledVector(vel, target.distanceTo(p.pos) / 60) : target.clone();

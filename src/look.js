@@ -89,7 +89,7 @@ export function sky() {
   return m;
 }
 
-const SEA_Y = -70;
+export const SEA_Y = -70;
 // islands: [x, z, radius, peak height]
 const ISLES = [[-150, -320, 70, 70], [70, -260, 26, 14], [-280, -150, 34, 20], [230, -330, 44, 30], [160, -140, 16, 7], [-40, -180, 14, 6], [300, 40, 30, 16], [-260, 160, 40, 26]];
 
@@ -156,6 +156,35 @@ export function sea() {
   return m;
 }
 
+const rockGeo = new THREE.DodecahedronGeometry(1, 0), rockMat = paint(0xb7aa99, { roughness: 0.95, rim: 0.1, flatShading: true });
+const palmTrunk = paint(0x9b7650, { roughness: 0.9, rim: 0.1 }), palmLeaf = paint(0x2f9e48, { roughness: 0.7, rim: 0.2, side: THREE.DoubleSide });
+const trunkGeo = new THREE.CylinderGeometry(0.16, 0.26, 1, 6), leafGeo = new THREE.PlaneGeometry(0.55, 2.2, 1, 3);
+{ // fronds droop toward the tip
+  const p = leafGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) { const y = p.getY(i) + 1.1; p.setZ(i, -0.18 * y * y); p.setY(i, y); }
+  leafGeo.computeVertexNormals();
+}
+function palm(x, y, z, out, h, rand) {
+  const t = new THREE.Group(); t.position.set(x, y, z);
+  // a curved trunk from three stacked segments, each leaning a bit further out
+  let px = 0, py = 0, lean = 0;
+  for (let k = 0; k < 3; k++) {
+    lean += 0.12 + rand() * 0.06;
+    const seg = new THREE.Mesh(trunkGeo, palmTrunk);
+    seg.scale.set(1 - k * 0.15, h / 3, 1 - k * 0.15);
+    seg.position.set(px + Math.sin(lean) * h / 6, py + Math.cos(lean) * h / 6, 0); seg.rotation.z = -lean;
+    px += Math.sin(lean) * h / 3; py += Math.cos(lean) * h / 3;
+    t.add(seg);
+  }
+  for (let k = 0; k < 6; k++) {
+    const f = new THREE.Mesh(leafGeo, palmLeaf);
+    f.position.set(px, py, 0); f.rotation.set(-0.9 + rand() * 0.3, (k / 6) * Math.PI * 2 + rand() * 0.4, 0, 'YXZ');
+    t.add(f);
+  }
+  t.rotation.y = -out;
+  return t;
+}
+
 // Lathe islands: sand rim, pale cliff, grass shelf, then a peak for the big ones.
 export function islands(rand) {
   const g = new THREE.Group();
@@ -165,8 +194,11 @@ export function islands(rand) {
     const pts = [
       [r * 1.06, -3], [r * 1.02, 0.6], [r * 0.95, 1.2], [r * 0.9, 4.5], [r * 0.82, 5.4],
       [r * 0.55, 6.5], [r * 0.32, 6.5 + peak * 0.45], [r * 0.1, 6.5 + peak * 0.95], [0, 6.5 + peak],
-    ].map(([a, b]) => new THREE.Vector2(a, b));
-    const geo = new THREE.LatheGeometry(pts, 48);
+    ];
+    // tall peaks are volcanoes: a rim and a dished crater instead of a point
+    if (peak > 40) pts.splice(-2, 2, [r * 0.12, 6.5 + peak * 0.93], [r * 0.085, 6.5 + peak * 0.97], [r * 0.06, 6.5 + peak * 0.9], [0, 6.5 + peak * 0.86]);
+    const prof = pts.map(([a, b]) => new THREE.Vector2(a, b));
+    const geo = new THREE.LatheGeometry(prof, 48);
     const pos = geo.attributes.position, col = [];
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
@@ -177,6 +209,7 @@ export function islands(rand) {
       if (py < 1.4) c.setHex(PAL.sand);
       else if (py < 4.8) c.setHex(PAL.rock);
       else if (py < 6.5 + peak * 0.35) c.setHex(PAL.grass);
+      else if (peak > 40 && py > 6.5 + peak * 0.9 && Math.hypot(px, pz) < r * 0.08) c.setHex(0x5a4436);
       else c.setHex(PAL.peak);
       col.push(c.r, c.g, c.b);
     }
@@ -185,6 +218,19 @@ export function islands(rand) {
     const m = new THREE.Mesh(geo, paint(0xffffff, { vertexColors: true, roughness: 0.9, rim: 0.15 }));
     m.position.set(x, SEA_Y, z);
     g.add(m);
+    // rocks at the waterline
+    for (let k = 0; k < Math.floor(r * 0.25); k++) {
+      const a = rand() * Math.PI * 2, d = r * (1.02 + rand() * 0.06), s = 0.8 + rand() * 2.2;
+      const rock = new THREE.Mesh(rockGeo, rockMat);
+      rock.position.set(x + Math.cos(a) * d, SEA_Y + 0.2 + rand() * 0.4, z + Math.sin(a) * d);
+      rock.scale.set(s, s * (0.5 + rand() * 0.4), s); rock.rotation.set(rand() * 3, rand() * 3, rand() * 3);
+      g.add(rock);
+    }
+    // a ring of palms leaning out over the shelf edge
+    for (let k = 0; k < Math.floor(r * 0.18); k++) {
+      const a = rand() * Math.PI * 2, d = r * (0.8 + rand() * 0.05);
+      g.add(palm(x + Math.cos(a) * d, SEA_Y + 5.6, z + Math.sin(a) * d, a, 2.2 + rand() * 1.6, rand));
+    }
     // round trees on the shelf
     const n = Math.floor(r * 0.9);
     for (let k = 0; k < n; k++) {
@@ -239,4 +285,66 @@ export function lights(scene) {
   sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
   scene.add(hemi, sun);
   return { hemi, sun };
+}
+
+// ---------- life ----------
+// Small things that make the world feel lived in: gulls wheeling over the big
+// island, two sailboats with wakes, and smoke curling off the volcano.
+export function life(rand) {
+  const g = new THREE.Group(), movers = [];
+  // gulls: a body and two wings that flap
+  const gullMat = paint(0xffffff, { roughness: 0.6, rim: 0.3, side: THREE.DoubleSide }), wingGeo = new THREE.PlaneGeometry(1.4, 0.45).translate(0.7, 0, 0);
+  const bodyGeo = new THREE.CapsuleGeometry(0.12, 0.5, 3, 6).rotateX(Math.PI / 2);
+  for (let k = 0; k < 7; k++) {
+    const b = new THREE.Group(), wl = new THREE.Mesh(wingGeo, gullMat), wr = new THREE.Mesh(wingGeo, gullMat);
+    wr.scale.x = -1; wl.rotation.x = wr.rotation.x = -Math.PI / 2;
+    const wings = [new THREE.Group(), new THREE.Group()]; wings[0].add(wl); wings[1].add(wr);
+    b.add(new THREE.Mesh(bodyGeo, gullMat), ...wings); b.scale.setScalar(1.6);
+    g.add(b);
+    const cx = -150 + (rand() - 0.5) * 40, cz = -320 + (rand() - 0.5) * 40, R = 30 + rand() * 40, y = SEA_Y + 40 + rand() * 50, sp = (0.15 + rand() * 0.15) * (rand() < 0.5 ? 1 : -1), ph = rand() * 6.3;
+    movers.push(t => {
+      const a = ph + t * sp;
+      b.position.set(cx + Math.cos(a) * R, y + Math.sin(t * 0.7 + ph) * 3, cz + Math.sin(a) * R);
+      b.rotation.set(0, -a + (sp > 0 ? 0 : Math.PI), sp > 0 ? -0.35 : 0.35);
+      const flap = Math.sin(t * 6 + ph) * 0.45 * (Math.sin(t * 0.5 + ph) > -0.3 ? 1 : 0.1);
+      wings[0].rotation.z = flap; wings[1].rotation.z = -flap;
+    });
+  }
+  // sailboats on slow loops, each pulling a white V of wake
+  const hullMat = paint(0xffffff, { roughness: 0.5, rim: 0.2 }), sailMat = paint(0xfff6e6, { roughness: 0.8, side: THREE.DoubleSide }), trimMat = paint(PAL.coral, { roughness: 0.5 });
+  const wakeTex = (() => { const c = document.createElement('canvas'); c.width = 64; c.height = 128; const x = c.getContext('2d');
+    const gr = x.createLinearGradient(0, 0, 0, 128); gr.addColorStop(0, 'rgba(255,255,255,.85)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.strokeStyle = gr; x.lineWidth = 7; x.beginPath(); x.moveTo(32, 2); x.lineTo(4, 126); x.moveTo(32, 2); x.lineTo(60, 126); x.stroke(); return new THREE.CanvasTexture(c); })();
+  const wakeMat = new THREE.MeshBasicMaterial({ map: wakeTex, transparent: true, depthWrite: false });
+  for (const [cx, cz, R, sp] of [[-150, -320, 120, 0.035], [230, -330, 80, -0.05]]) {
+    const b = new THREE.Group();
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 6, 1, 1, 2), hullMat); hull.position.y = 0.3;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.2, 6.05), trimMat); stripe.position.y = 0.55;
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 7), hullMat); mast.position.y = 4;
+    const sailShape = new THREE.Shape(); sailShape.moveTo(0, 0); sailShape.lineTo(0, 6); sailShape.lineTo(3.4, 0.4); sailShape.lineTo(0, 0);
+    const sail = new THREE.Mesh(new THREE.ShapeGeometry(sailShape), sailMat); sail.position.set(0, 1.2, -0.2); sail.rotation.y = Math.PI / 2;
+    const wake = new THREE.Mesh(new THREE.PlaneGeometry(9, 26), wakeMat); wake.rotation.x = -Math.PI / 2; wake.position.set(0, 0.06, -15);
+    b.add(hull, stripe, mast, sail, wake);
+    g.add(b);
+    const ph = rand() * 6.3;
+    movers.push(t => {
+      const a = ph + t * sp;
+      b.position.set(cx + Math.cos(a) * R, SEA_Y + Math.sin(t * 1.3 + ph) * 0.15, cz + Math.sin(a) * R);
+      b.rotation.set(Math.sin(t * 1.1 + ph) * 0.04, -a + (sp > 0 ? Math.PI : 0), Math.sin(t * 0.9) * 0.05);
+    });
+  }
+  // volcano smoke: puffs rise from the crater, drift with the wind and fade
+  const top = new THREE.Vector3(-150, SEA_Y + 6.5 + 70 * 0.9, -320), puffGeo = new THREE.IcosahedronGeometry(1, 2);
+  for (let k = 0; k < 12; k++) {
+    const m = new THREE.Mesh(puffGeo, paint(0xe8e4e0, { roughness: 1, rim: 0.2, emissive: 0xffffff, emissiveIntensity: 0.15, transparent: true, depthWrite: false }));
+    g.add(m);
+    const off = k / 12, j = rand();
+    movers.push(t => {
+      const age = (t * 0.06 + off) % 1;
+      m.position.copy(top).add(new THREE.Vector3(age * 40 + Math.sin(age * 6 + j * 6) * 3, age * 55, age * 14));
+      m.scale.setScalar(3 + age * 12 + j * 2);
+      m.material.opacity = Math.min(1, age * 6) * (1 - age) * 0.75;
+    });
+  }
+  return { group: g, update: t => { for (const f of movers) f(t); } };
 }

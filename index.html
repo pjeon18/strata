@@ -48,7 +48,9 @@
       <i></i>
     </div>
     <div class="pop" id="pop"></div>
+    <div id="floaters"></div>
     <div id="arrows"></div>
+    <div class="wave hidden" id="wave"><i></i><i></i><i></i><span><kbd>R</kbd>Shockwave</span></div>
     <div class="slot" id="slot"><div class="bubble" id="slotIcon"></div><kbd>E</kbd><span class="slot-name" id="slotName">Empty</span></div>
     <div class="effects" id="effects"></div>
     <div class="hints" id="keys"></div>
@@ -94,6 +96,7 @@
   <div id="loadout" class="screen hidden pick">
     <div class="pick-head"><button class="back" data-back>‹</button><span class="wordmark">Loadout</span></div>
     <div class="cards" id="loadCards"></div>
+    <div class="planes" id="planePick"></div>
     <div class="desc" id="loadDesc"><div class="desc-meta" id="loadMeta"></div><p id="loadText"></p></div>
     <div class="hints menu-hints"><span><kbd>Click</kbd>Fly</span><span><kbd>Esc</kbd>Back</span></div>
   </div>
@@ -116,6 +119,7 @@
       <div class="team t0"><h3>Coral</h3><div id="seatsA"></div></div>
       <div class="team t1"><h3>Violet</h3><div id="seatsB"></div></div>
     </div>
+    <div class="match-mode" id="matchMode"></div>
     <div class="roles" id="rolePick"></div>
     <div class="lobby-foot"><p id="lobbyNote"></p><button class="opt grey" id="fillBots">Fill empty seats with bots</button><button class="opt coral sel" id="startMatch">Start</button></div>
   </div>
@@ -139,11 +143,14 @@
       <div class="panel-head"><button class="back" id="settingsBack">‹</button><span class="wordmark">Settings</span></div>
       <label class="set"><span>Mouse sensitivity</span><input type="range" id="setSens" min="0.4" max="2" step="0.05" /><b id="setSensV"></b></label>
       <label class="set toggle"><span>Invert up and down</span><input type="checkbox" id="setInvert" /><i></i></label>
+      <label class="set"><span>Field of view</span><input type="range" id="setFov" min="58" max="92" step="1" /><b id="setFovV"></b></label>
+      <label class="set"><span>Crosshair size</span><input type="range" id="setCross" min="0.7" max="1.5" step="0.05" /><b id="setCrossV"></b></label>
       <hr />
       <label class="set"><span>Music</span><input type="range" id="setMusic" min="0" max="1" step="0.05" /><b id="setMusicV"></b></label>
       <label class="set"><span>Effects</span><input type="range" id="setSfx" min="0" max="1" step="0.05" /><b id="setSfxV"></b></label>
       <hr />
       <label class="set"><span>Screen shake</span><input type="range" id="setShake" min="0" max="1" step="0.05" /><b id="setShakeV"></b></label>
+      <label class="set toggle"><span>Colour-blind colours</span><input type="checkbox" id="setCb" /><i></i></label>
       <div class="set seg"><span>Graphics</span><div class="segs" id="setQuality"><button data-q="high">High</button><button data-q="low">Fast</button></div></div>
       <button class="mini reset" id="setReset">Reset to defaults</button>
     </div>
@@ -152,8 +159,9 @@
   <div id="touch" class="screen hidden">
     <div class="panel small touch">
       <div class="panel-head"><span class="wordmark">Strata</span></div>
-      <p class="touch-text">Strata is flown with a mouse and keyboard. Open this page on a computer to play it. You can still watch a round play itself here.</p>
-      <button class="opt coral sel" id="watchIt">Watch it play</button>
+      <p class="touch-text">Strata plays best with a mouse and keyboard, but you can fly it with touch. Your left thumb steers, your right thumb drags to look, and the buttons place blocks, blast and dash. Flick the stick to swoop.</p>
+      <button class="opt coral sel" id="playTouch">Play with touch</button>
+      <button class="opt grey" id="watchIt">Watch it play</button>
     </div>
   </div>
 
@@ -189,6 +197,7 @@
       <div class="badge"><b id="rBig">0</b><span id="rUnit">points</span><em id="rRecord">New record!</em></div>
       <p class="next-star" id="rNext"></p>
       <div class="table"><div class="head" id="rHead"></div><div class="row" id="rRow"></div><div id="rRows"></div></div>
+      <div class="extras" id="rExtra"></div>
       <div class="actions"><button class="opt coral sel hidden" id="nextLevel">Next level</button><button class="opt coral sel" id="again">Fly again</button><button class="opt grey" id="modes">Modes</button></div>
     </div>
   </div>

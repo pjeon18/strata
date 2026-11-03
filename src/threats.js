@@ -52,16 +52,21 @@ export const group = new THREE.Group();
 export const meteors = [];
 export const drones = [];
 
+// the daily challenge swaps in a seeded random, so everyone gets the same
+// meteors; layer modifiers scale how far they smash and how fast they fly
+let rnd = Math.random;
+export const mods = { smash: 1, speed: 1 };
+export const setRand = f => { rnd = f || Math.random; };
 function surfaceTarget() {
   // prefer loose blocks (they're what you'd lose), else a bare core face
   const loose = G.looseCells();
   const a = G.analyze();
-  if (loose.length && Math.random() < 0.6) {
-    const i = loose[(Math.random() * loose.length) | 0];
+  if (loose.length && rnd() < 0.6) {
+    const i = loose[(rnd() * loose.length) | 0];
     return new THREE.Vector3(G.cx(i), G.cy(i), G.cz(i));
   }
   if (a.faces.length) {
-    const f = a.faces[(Math.random() * a.faces.length) | 0];
+    const f = a.faces[(rnd() * a.faces.length) | 0];
     return new THREE.Vector3(f[0] + f[3] * 0.5, f[1] + f[4] * 0.5, f[2] + f[5] * 0.5);
   }
   return new THREE.Vector3();
@@ -70,8 +75,10 @@ function surfaceTarget() {
 export function spawnMeteor(speed, kind = 'normal') {
   const K = KINDS[kind];
   const target = surfaceTarget();
-  const dir = new THREE.Vector3().randomDirection();
+  const u = rnd() * 2 - 1, th = rnd() * Math.PI * 2, rr = Math.sqrt(1 - u * u);
+  const dir = new THREE.Vector3(rr * Math.cos(th), u, rr * Math.sin(th));
   dir.y = Math.abs(dir.y) * 0.8 + 0.1; dir.normalize();
+  speed *= mods.speed;
   const pos = target.clone().addScaledVector(dir, 42);
   const m = new THREE.Mesh(rockGeos[(Math.random() * 3) | 0], rockMats[kind]); m.castShadow = true; m.position.copy(pos); m.scale.setScalar(K.r);
   const trail = fxOnly(new THREE.Mesh(trailGeo, trailMat));
@@ -125,11 +132,11 @@ export function update(dt, t, hooks, shipPos, onShipHit) {
     if (G.solid(...cell) || o.pos.distanceTo(o.target) < 0.4) {
       // smash loose blocks in radius; a bare core cell nearby takes a crack
       let cracked = false;
-      const R = Math.ceil(o.K.smash);
+      const smash = o.K.smash * mods.smash, R = Math.ceil(smash);
       for (let x = cell[0] - R; x <= cell[0] + R; x++) for (let y = cell[1] - R; y <= cell[1] + R; y++) for (let z = cell[2] - R; z <= cell[2] + R; z++) {
         const d = Math.hypot(x - o.pos.x, y - o.pos.y, z - o.pos.z);
-        if (d > o.K.smash + 0.2) continue;
-        if (G.get(x, y, z) === G.LOOSE && d < o.K.smash) hooks.destroyBlock(G.idx(x, y, z));
+        if (d > smash + 0.2) continue;
+        if (G.get(x, y, z) === G.LOOSE && d < smash) hooks.destroyBlock(G.idx(x, y, z));
         else if (G.get(x, y, z) === G.CORE && G.exposed[G.idx(x, y, z)] && d < 1.3) cracked = true;
       }
       hooks.impact(o.pos.clone(), cracked);
@@ -214,6 +221,12 @@ export function areaHit(p, r, dmg, onKill) {
   for (let k = drones.length - 1; k >= 0; k--) {
     if (drones[k].pos.distanceTo(p) < r + 0.5) { onKill('drone', drones[k].pos.clone()); kill(drones, k); }
   }
+}
+
+// the shockwave: everything within R of the core centre breaks at once
+export function clearWithin(R, onKill) {
+  for (let k = meteors.length - 1; k >= 0; k--) if (meteors[k].pos.length() < R) { onKill('meteor', meteors[k].pos.clone()); kill(meteors, k); }
+  for (let k = drones.length - 1; k >= 0; k--) if (drones[k].pos.length() < R) { onKill('drone', drones[k].pos.clone()); kill(drones, k); }
 }
 
 export function clear() { while (meteors.length) kill(meteors, 0); while (drones.length) kill(drones, 0); }

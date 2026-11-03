@@ -27,10 +27,14 @@ export const TEAM = [
 ];
 export const teamOf = seat => (seat < 2 ? 0 : 1);
 const ROUND = 180, POSE_HZ = 20, STATE_HZ = 15, OPS_HZ = 25;
+// Grow vs Shrink: Coral grows the core and wins by sealing GOAL layers before
+// the clock runs out; Violet can't build, only break, and wins by holding out.
+// Sealed layers stay sealed, so Shrink can only deny (CONCEPT Q2).
+export const GOAL = 4;
 
 export function createVersus(game) {
   const V = {
-    net: null, code: null, isHost: false, phase: 'off', // off | lobby | playing | over
+    net: null, code: null, isHost: false, phase: 'off', mode: 'versus', // off | lobby | playing | over; versus | grow
     seats: [null, null, null, null], seat: -1, name: randomName(), role: 'rapid',
     left: ROUND, score: [0, 0], stats: {}, ships: new Map(), hostId: null,
   };
@@ -99,10 +103,11 @@ export function createVersus(game) {
   }
 
   const humans = team => V.seats.filter((s, i) => s && s.kind === 'human' && teamOf(i) === team).length;
-  const lobbyMsg = () => ({ code: V.code, phase: V.phase, seats: V.seats, hostId: V.net?.selfId });
+  const lobbyMsg = () => ({ code: V.code, phase: V.phase, seats: V.seats, hostId: V.net?.selfId, mode: V.mode });
+  V.setMode = m => { if (!V.isHost || V.phase !== 'lobby') return; V.mode = m; pushLobby(); };
   function pushLobby() { V.net?.sendLobby(lobbyMsg()); game.lobbyChanged(); }
   function applyLobby(m) {
-    V.hostId = m.hostId; V.seats = m.seats;
+    V.hostId = m.hostId; V.seats = m.seats; V.mode = m.mode || 'versus';
     const mine = V.seats.findIndex(s => s && s.id === V.net.selfId);
     V.seat = mine;
     if (mine >= 0) V.role = V.seats[mine].role;
@@ -145,13 +150,13 @@ export function createVersus(game) {
   V.start = () => {
     if (!V.canStart()) return;
     V.phase = 'playing';
-    op(['start', V.seats, ROUND]);
+    op(['start', V.seats, ROUND, V.mode]);
     flush();
-    begin(V.seats, ROUND);
+    begin(V.seats, ROUND, V.mode);
     pushLobby();
   };
-  function begin(seats, round) {
-    V.seats = seats; V.left = round; V.score = [0, 0]; V.stats = {};
+  function begin(seats, round, mode = 'versus') {
+    V.seats = seats; V.left = round; V.score = [0, 0]; V.stats = {}; V.mode = mode;
     if (!V.isHost) V.seat = seats.findIndex(s => s && s.id === V.net?.selfId);
     // joined while a match was already running: watch from the lobby until it ends
     if (V.seat < 0) { V.phase = 'playing'; return game.lobbyChanged('A match is in progress. You will get a seat when it ends.'); }
@@ -175,7 +180,8 @@ export function createVersus(game) {
     const sh = { seat: k, mesh, pilot, target: null, stun: 0, shield: false };
     if (s.kind === 'bot' && V.isHost) {
       sh.ai = AI.agent(pilot, { owner: teamOf(k), seat: k, pattern: L.build.pattern, rate: L.build.rate * 2.6,
-        blastRate: L.blast.rate * 1.8, aggro: s.role === 'bomber' || s.role === 'laser' ? 0.5 : 0.3, defend: false, dash: true });
+        blastRate: L.blast.rate * 1.8, aggro: s.role === 'bomber' || s.role === 'laser' ? 0.5 : 0.3, defend: false, dash: true,
+        noBuild: V.mode === 'grow' && teamOf(k) === 1 });
     }
     V.ships.set(k, sh);
   }
@@ -260,7 +266,11 @@ export function createVersus(game) {
 
   // ---------------- host hooks from the game ----------------
   V.placed = (i, team, seat) => { op(['p', i, team]); if (V.stats[seat]) V.stats[seat].blocks++; placer[i] = seat + 1; };
-  V.removed = (i, bySeat) => { op(['r', i]); if (bySeat != null && V.stats[bySeat]) V.stats[bySeat].breaks++; placer[i] = 0; };
+  V.removed = (i, bySeat) => {
+    op(['r', i]); if (bySeat != null && V.stats[bySeat]) V.stats[bySeat].breaks++; placer[i] = 0;
+    // Grow vs Shrink: Shrink's score is blocks broken
+    if (V.mode === 'grow' && bySeat != null && bySeat >= 0 && teamOf(bySeat) === 1) V.score[1]++;
+  };
   const placer = new Uint8Array(G.N ** 3);
   V.sealed = (made, layer) => {
     // points for the layer, split by blocks each team (and each pilot) placed
@@ -273,10 +283,12 @@ export function createVersus(game) {
       placer[i] = 0;
     }
     const n = byTeam[0] + byTeam[1] || 1;
-    const pts = byTeam.map(b => Math.round(total * b / n));
+    // Grow vs Shrink scores layers, not points
+    const pts = V.mode === 'grow' ? [1, 0] : byTeam.map(b => Math.round(total * b / n));
     V.score[0] += pts[0]; V.score[1] += pts[1];
     for (const [s, b] of Object.entries(bySeat)) if (V.stats[s]) V.stats[s].pts += Math.round(total * b / n);
     op(['s', layer, made, pts]);
+    if (V.mode === 'grow' && V.score[0] >= GOAL && V.phase === 'playing') setTimeout(finish, 1200);
     return pts;
   };
   V.shot = (seat, kind, from, a, pattern) => op(['shot', seat, kind, from.toArray().map(r2), a, pattern]);
@@ -339,7 +351,7 @@ export function createVersus(game) {
   // guest: apply what the host decided
   function applyOp(o) {
     switch (o[0]) {
-      case 'start': begin(o[1], o[2]); break;
+      case 'start': begin(o[1], o[2], o[3]); break;
       case 'p': game.mirrorPlace(o[1], o[2]); break;
       case 'r': game.mirrorRemove(o[1]); break;
       case 's': game.mirrorSeal(o[2], o[1], o[3]); V.score[0] += o[3][0]; V.score[1] += o[3][1]; break;
@@ -353,8 +365,9 @@ export function createVersus(game) {
   }
 
   function finish() {
+    if (V.phase !== 'playing') return;
     V.phase = 'over';
-    const res = { score: V.score, seats: V.seats, stats: V.stats };
+    const res = { score: V.score, seats: V.seats, stats: V.stats, mode: V.mode, winner: V.mode === 'grow' ? (V.score[0] >= GOAL ? 0 : 1) : null };
     op(['end', res]); flush();
     game.versusOver(res);
   }

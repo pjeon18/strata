@@ -10,6 +10,7 @@ export const ICON = {
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/></svg>',
   person: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="7" r="3.5"/><path d="M5 21c.6-4.2 3.2-6.5 7-6.5s6.4 2.3 7 6.5"/></svg>',
   mouse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/></svg>',
+  lock: '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10.5" rx="3"/><path d="M8.2 10.5V8a3.8 3.8 0 017.6 0v2.5" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M12 2.2l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" stroke-linejoin="round"/></svg>',
   soundOn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11"/></svg>',
   soundOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>',
@@ -99,6 +100,38 @@ export function dash(n, frac) {
     dashWas[k] = f;
   }
 }
+// points rising from where they were earned
+export function floater(text, x, y, size) {
+  const el = document.createElement('div');
+  el.className = `floater ${size || ''}`; el.textContent = text;
+  el.style.left = `${x}px`; el.style.top = `${y}px`;
+  $('floaters').appendChild(el);
+  setTimeout(() => el.remove(), 1100);
+}
+// an empty click: the crosshair shakes and the ammo arc flashes
+export function emptyNudge() {
+  const c = $('cross');
+  c.classList.remove('nudge'); void c.offsetWidth; c.classList.add('nudge');
+}
+// shockwave charge: three pips that fill with seals, ready when full
+export function wave(n, show) {
+  const el = $('wave');
+  el.classList.toggle('hidden', !show);
+  el.classList.toggle('ready', n >= 3);
+  el.querySelectorAll('i').forEach((p, k) => p.classList.toggle('on', k < n));
+  document.body.classList.toggle('wave-ready', n >= 3 && show);
+}
+// a gold layer turns the meter gold
+export const modMeter = mod => $('meter').classList.toggle('gold', mod === 'gold');
+// plane colour swatches on the loadout screen
+export function planes(list, stars, sel, onPick) {
+  $('planePick').innerHTML = '<span class="lbl">Plane colour</span>' + list.map((p, k) => {
+    const locked = p.stars > stars;
+    return `<button class="swatch ${k === sel ? 'on' : ''} ${locked ? 'locked' : ''}" data-plane="${k}" style="--c:#${p.accent.toString(16).padStart(6, '0')}" title="${locked ? `${p.stars} stars to unlock` : p.name}">
+      <i></i><span>${locked ? `${ICON.lock}${p.stars}` : p.name}</span></button>`;
+  }).join('');
+  $('planePick').querySelectorAll('[data-plane]').forEach(b => (b.onclick = e => { e.stopPropagation(); onPick(+b.dataset.plane); }));
+}
 // a short word under the crosshair ("Close call")
 export function pop(text) {
   const el = $('pop'); el.textContent = text;
@@ -129,7 +162,7 @@ export function ammo(frac, { charging, empty, infinite }) {
 export function keys(game, used) {
   const k = (id, key, label) => `<span data-k="${id}" class="${used.has(id) ? 'used' : ''}"><kbd>${key}</kbd>${label}</span>`;
   $('keys').innerHTML = [k('aim', 'Mouse', 'Aim'), k('fly', 'WASD', 'Fly'), k('up', 'Space', 'Up'), k('down', 'Shift', 'Down'), k('dash', 'Q', 'Dash'), k('swoop', 'Tap twice', 'Swoop'),
-    ...(game === 'containment' ? [k('blast', 'Click', 'Blast')] : [k('place', 'Left', 'Place'), k('blast', 'Right', 'Blast')]), k('item', 'E', 'Item'), k('mute', 'M', 'Mute'), k('hide', 'H', 'Hide')].join('');
+    ...(game === 'containment' ? [k('blast', 'Click', 'Blast')] : [k('place', 'Left', 'Place'), k('blast', 'Right', 'Blast')]), k('item', 'E', 'Item'), ...(game === 'survival' ? [k('wave', 'R', 'Wave')] : []), k('hide', 'H', 'Hide')].join('');
 }
 export function usedKey(id) { const el = $('keys').querySelector(`[data-k="${id}"]`); if (el) el.classList.add('used'); }
 export const retireKeys = () => $('keys').classList.add('retired');
@@ -250,19 +283,26 @@ export function menu(onPick, onSelect) {
 }
 
 const starRow = n => [0, 1, 2].map(k => `<i class="${k < n ? 'on' : ''}">${ICON.star}</i>`).join('');
-export function levels(list, best, onPick, onBack, onSelect) {
+// a level opens once the one before it has a star; a locked card shows a lock
+// and the band says what opens it
+export function levels(list, best, onPick, onBack, onSelect, isOpen) {
   $('levelCards').innerHTML = list.map(l => `<button class="card lvl lvl${l.id}" data-pick="${l.id}">
-    <div class="art"><b>${l.id}</b></div>
+    <div class="art"><b>${l.short || l.id}</b><span class="lock">${ICON.lock}</span></div>
     <div class="label">${l.name}</div>
     <div class="mini-stars">${starRow(best(l.id))}</div></button>`).join('');
   const c = chooser($('levels'), { onPick, onBack, onSelect, horizontal: true, describe: k => {
-    const l = list[k - 1];
+    const l = list.find(x => String(x.id) === String(k));
+    if (!isOpen(l.id)) return band('levelDesc', `${ICON.lock}<span>Locked</span>`, `Earn a star on Level ${l.id - 1} to open this level.`);
     band('levelDesc', `${ICON.star}<span>Stars at ${l.stars.slice(0, 2).map(s => s.toLocaleString()).join(', ')} and ${l.stars[2].toLocaleString()} points</span>`, l.blurb);
   } });
+  refreshLevelStars(list, best, isOpen);
   return c;
 }
-export function refreshLevelStars(list, best) {
-  list.forEach(l => { const el = document.querySelector(`.lvl${l.id} .mini-stars`); if (el) el.innerHTML = starRow(best(l.id)); });
+export function refreshLevelStars(list, best, isOpen) {
+  list.forEach(l => {
+    const el = document.querySelector(`.lvl${l.id} .mini-stars`); if (el) el.innerHTML = starRow(best(l.id));
+    if (isOpen) document.querySelector(`.lvl${l.id}`)?.classList.toggle('locked', !isOpen(l.id));
+  });
 }
 
 export function loadouts(defs, onPick, onBack, onSelect) {
@@ -275,12 +315,20 @@ export function loadouts(defs, onPick, onBack, onSelect) {
 }
 
 // Result: stars (levels only), big badge, one stats row, then actions.
-export function result({ big, unit, record, cols, total, stars, next, nextLevel }) {
+export function result({ big, unit, record, cols, total, stars, next, nextLevel, extras = [], count }) {
   soloResultLabels();
   $('rNext').textContent = next || '';
   $('nextLevel').classList.toggle('hidden', !nextLevel);
   $('again').classList.toggle('sel', !nextLevel); $('again').classList.toggle('grey', !!nextLevel); $('again').classList.toggle('coral', !nextLevel);
   $('rBig').textContent = big;
+  // the score counts up once the card has landed
+  if (count != null) {
+    const el = $('rBig'), t0 = performance.now() + 450, dur = 900;
+    el.textContent = '0';
+    const step = () => { const k = Math.min(1, Math.max(0, (performance.now() - t0) / dur)); el.textContent = Math.round(count * (1 - (1 - k) ** 3)).toLocaleString(); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+  $('rExtra').innerHTML = extras.map(([k, v]) => `<span><b>${v}</b>${k}</span>`).join('');
   $('rUnit').textContent = unit;
   $('rRecord').classList.toggle('hidden', !record);
   const st = $('rStars');
@@ -314,13 +362,15 @@ export function settings(prefs, set, onBack) {
   const syncs = [
     range('setSens', 'sens', v => `${v.toFixed(2)}×`),
     range('setMusic', 'music', pct), range('setSfx', 'sfx', pct), range('setShake', 'shake', pct),
+    range('setFov', 'fov', v => `${Math.round(v)}°`), range('setCross', 'cross', v => `${v.toFixed(2)}×`),
   ];
-  const inv = $('setInvert');
+  const inv = $('setInvert'), cb = $('setCb');
   inv.onchange = () => set('invert', inv.checked);
+  cb.onchange = () => set('cb', cb.checked);
   const segs = [...$('setQuality').querySelectorAll('button')];
   const paintQ = () => segs.forEach(b => b.classList.toggle('on', b.dataset.q === prefs.quality));
   segs.forEach(b => { b.onclick = () => { set('quality', b.dataset.q); paintQ(); }; });
-  const sync = () => { syncs.forEach(f => f()); inv.checked = prefs.invert; paintQ(); };
+  const sync = () => { syncs.forEach(f => f()); inv.checked = prefs.invert; cb.checked = prefs.cb; paintQ(); };
   sync();
   $('settingsBack').onclick = onBack;
   addEventListener('keydown', e => { if (!$('settings').classList.contains('hidden') && e.code === 'Escape') onBack(); });
@@ -387,6 +437,14 @@ export function lobby(V, LOADOUTS, note) {
       ${V.isHost && s.kind === 'bot' ? `<button class="mini" data-cycle="${k}">Role</button><button class="mini x" data-bot="${k}">Remove</button>` : ''}
     </div>`;
   };
+  // match type: Versus, or Grow vs Shrink (host picks)
+  const grow = V.mode === 'grow';
+  document.querySelector('#lobby .team.t0 h3').textContent = grow ? 'Coral · Grow' : 'Coral';
+  document.querySelector('#lobby .team.t1 h3').textContent = grow ? 'Violet · Shrink' : 'Violet';
+  $('matchMode').innerHTML = V.isHost
+    ? `<span class="lbl">Match</span><div class="segs"><button data-mode="versus" class="${grow ? '' : 'on'}">Versus</button><button data-mode="grow" class="${grow ? 'on' : ''}">Grow vs Shrink</button></div>`
+    : `<span class="lbl">Match</span><b>${grow ? 'Grow vs Shrink' : 'Versus'}</b>`;
+  document.querySelectorAll('#matchMode [data-mode]').forEach(b => (b.onclick = () => V.setMode(b.dataset.mode)));
   $('seatsA').innerHTML = seat(0) + seat(1);
   $('seatsB').innerHTML = seat(2) + seat(3);
   const roles = Object.keys(LOADOUTS);
@@ -408,10 +466,10 @@ export function lobby(V, LOADOUTS, note) {
 
 // versus result: who won, both team totals, one row per pilot
 export function versusResult(res, myTeam, isHost, LOADOUTS) {
-  const [a, b] = res.score, win = a === b ? -1 : a > b ? 0 : 1;
-  $('rStars').classList.add('hidden');
+  const [a, b] = res.score, win = res.mode === 'grow' ? res.winner : a === b ? -1 : a > b ? 0 : 1;
+  $('rStars').classList.add('hidden'); $('rExtra').innerHTML = '';
   $('rBig').textContent = win < 0 ? 'Draw' : win === myTeam ? 'You win' : 'You lose';
-  $('rUnit').textContent = `Coral ${a.toLocaleString()} · Violet ${b.toLocaleString()}`;
+  $('rUnit').textContent = res.mode === 'grow' ? `Grow sealed ${a} of ${res.goal || 4} layers · Shrink broke ${b} blocks` : `Coral ${a.toLocaleString()} · Violet ${b.toLocaleString()}`;
   $('rRecord').classList.add('hidden');
   $('rNext').textContent = ''; $('nextLevel').classList.add('hidden');
   $('again').classList.add('sel', 'coral'); $('again').classList.remove('grey');

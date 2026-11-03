@@ -76,7 +76,57 @@ export const loose = mk(brick, paint(0xffffff, { roughness: 0.28, rim: 0.5 }), M
 export const group = new THREE.Group();
 group.add(core, bare, loose);
 
-const which = new Uint8Array(G.N ** 3);      // 0 none, 1 core, 2 bare, 3 loose
+// Merged core: settled sealed blocks are drawn as one mesh of only their
+// outside faces, with corner shading baked into the vertex colours. No inner
+// faces means no seam ticks between blocks, and far fewer triangles once the
+// core is big. Blocks still animating from a seal stay instanced until done.
+const solidMat = paint(0xffffff, { roughness: 0.8, rim: 0.22, vertexColors: true });
+const solid = new THREE.Mesh(new THREE.BufferGeometry(), solidMat);
+solid.castShadow = solid.receiveShadow = true; solid.frustumCulled = false;
+group.add(solid);
+let mergeDirty = true;
+const AOL = [0.56, 0.7, 0.85, 1];
+function buildSolid() {
+  mergeDirty = false;
+  const pos = [], nor = [], col = [], idxs = [];
+  const c = new THREE.Color();
+  const S = (x, y, z) => G.solid(x, y, z) ? 1 : 0;
+  for (let i = 0; i < which.length; i++) {
+    if (which[i] !== 4) continue;
+    const x = G.cx(i), y = G.cy(i), z = G.cz(i);
+    baseColor(i, 1, c);
+    for (let d = 0; d < 6; d++) {
+      const n = G.D6[d];
+      if (S(x + n[0], y + n[1], z + n[2])) continue;
+      // the two axes along the face
+      const U = n[0] ? [0, 1, 0] : [1, 0, 0], V = n[2] ? [0, 1, 0] : [0, 0, 1];
+      const base = pos.length / 3, ao = [];
+      for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const cx = x + n[0] + su * U[0], cy = y + n[1] + su * U[1], cz = z + n[2] + su * U[2];
+        const s1 = S(cx, cy, cz), s2 = S(x + n[0] + sv * V[0], y + n[1] + sv * V[1], z + n[2] + sv * V[2]);
+        const cr = S(cx + sv * V[0], cy + sv * V[1], cz + sv * V[2]);
+        const k = s1 && s2 ? 0 : 3 - (s1 + s2 + cr);
+        ao.push(k);
+        pos.push(x + (n[0] + su * U[0] + sv * V[0]) * 0.5, y + (n[1] + su * U[1] + sv * V[1]) * 0.5, z + (n[2] + su * U[2] + sv * V[2]) * 0.5);
+        nor.push(...n);
+        col.push(c.r * AOL[k], c.g * AOL[k], c.b * AOL[k]);
+      }
+      // wind each face outward, and split along the brighter diagonal
+      const flip = ao[0] + ao[2] < ao[1] + ao[3];
+      const cw = (U[1] * V[2] - U[2] * V[1]) * n[0] + (U[2] * V[0] - U[0] * V[2]) * n[1] + (U[0] * V[1] - U[1] * V[0]) * n[2] > 0;
+      const q = flip ? [1, 2, 3, 1, 3, 0] : [0, 1, 2, 0, 2, 3];
+      for (let k = 0; k < 6; k += 3) idxs.push(base + q[k], base + q[cw ? k + 1 : k + 2], base + q[cw ? k + 2 : k + 1]);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idxs);
+  solid.geometry.dispose(); solid.geometry = g;
+}
+
+const which = new Uint8Array(G.N ** 3);      // 0 none, 1 core (animating), 2 bare, 3 loose, 4 merged core
 const slot = new Int32Array(G.N ** 3);
 const meshOf = [null, core, bare, loose];
 
@@ -144,7 +194,7 @@ export function clearCracks() { for (const c of cracks) group.remove(c.m); crack
 // cell -> animation { t0, dur, kind: 'pop' | 'seal' }
 const anims = new Map();
 export function pop(i, t) { anims.set(i, { t0: t, dur: 0.22, kind: 'pop' }); }
-export function seal(i, t, delay) { anims.set(i, { t0: t + delay, dur: 0.5, kind: 'seal' }); }
+export function seal(i, t, delay) { anims.set(i, { t0: t + delay, dur: 0.6, kind: 'seal' }); }
 
 function animScale(a, t) {
   const k = (t - a.t0) / a.dur;
@@ -187,22 +237,27 @@ export function sync(t) {
       let visible = false;
       for (let d = 0; d < 6; d++) if (cells[i + steps[d]] !== G.CORE) { visible = true; break; }
       if (!visible) continue;
-      kind = G.exposed[i] ? 2 : 1;
+      kind = G.exposed[i] ? 2 : anims.has(i) ? 1 : 4;
     }
+    if (kind === 4) { which[i] = 4; continue; }
     const m = meshOf[kind];
     which[i] = kind; slot[i] = m.count++;
     write(i, t);
   }
   for (const m of [core, bare, loose]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; m.geometry.attributes.aoMask.needsUpdate = true; }
+  buildSolid();
 }
 
 export function update(t) {
   bareMat.emissiveIntensity = 0.12 + 0.12 * Math.sin(t * 3.4);
   if (!anims.size) return;
+  let settled = false;
   for (const [i, a] of anims) {
-    if (which[i]) write(i, t);
-    if (t - a.t0 > a.dur) anims.delete(i);
+    if (which[i] && which[i] !== 4) write(i, t);
+    if (t - a.t0 > a.dur) { anims.delete(i); if (which[i] === 1) settled = true; }
   }
+  // sealed blocks that finished their wave move into the merged mesh
+  if (settled) return sync(t);
   for (const m of [core, bare, loose]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
 }
 

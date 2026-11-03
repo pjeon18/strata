@@ -13,11 +13,34 @@ export const LEVELS = [
     stars: [1500, 4000, 9000] },
 ];
 
-export function pickKind(mix) {
-  let r = Math.random();
+export function pickKind(mix, rnd = Math.random) {
+  let r = rnd();
   for (const [k, w] of Object.entries(mix)) { if ((r -= w) <= 0) return k; }
   return 'normal';
 }
+
+// Daily challenge: Crosswinds rules on a seed from today's date, so the
+// meteors come the same way for everyone; the best score is kept per day.
+export function daily(now = new Date()) {
+  const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const label = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return { ...LEVELS[1], id: 'daily', name: `Daily · ${label}`, short: label, key, seed: [...key].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7),
+    blurb: 'Everyone gets the same meteors today, with Crosswinds rules and its layer modifiers. Your best score today is kept.' };
+}
+// a small seeded random (mulberry32)
+export function seeded(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+// Plane colours: cosmetic, unlocked by total stars across the three levels
+export const PLANES = [
+  { name: 'Classic', accent: 0x1ec2d4, ring: 0x6ff3ff, stars: 0 },
+  { name: 'Sunset', accent: 0xff7a3d, ring: 0xffc08a, stars: 2 },
+  { name: 'Lilac', accent: 0xa98bff, ring: 0xd9ccff, stars: 4 },
+  { name: 'Mint', accent: 0x2fd39a, ring: 0xa8ffd8, stars: 6 },
+  { name: 'Gold', accent: 0xffb81f, ring: 0xfff0a0, stars: 9 },
+];
+export const totalStars = () => [1, 2, 3].reduce((n, id) => n + bestStars(id), 0);
 
 export const starsFor = (level, score) => level.stars.filter(s => score >= s).length;
 

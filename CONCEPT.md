@@ -328,11 +328,11 @@ bots.
 | **Survival (solo)** — seal layers, meteors + nibblers erode you | **Built**: 3 levels with stars (D11) |
 | **Containment (solo)** — builder bots grow the core; you blast them and their blocks before it reaches world-ending size | **Built** (D9) |
 | **Versus (2v2 online, bots fill seats)** — both teams build, stun, break each other's blocks, power-ups | **Built** (D16) |
-| **Grow vs Shrink (1v1)** — one grows, one keeps it small | Needs open question Q2 |
+| **Grow vs Shrink** — one team grows, the other keeps it small | **Built** (D28), a Versus match type |
 
 ## Open questions for Paul
 
-- **Q2 How does the Shrink player shrink?** Cemented layers are unbreakable by
+- **Q2 (answered in D28: denial only) How does the Shrink player shrink?** Cemented layers are unbreakable by
   the pitch, so Shrink can only *deny*. Option: a charged shot that can crack
   the *outermost* cemented layer only, which keeps the rule "sealed history is
   permanent." Recommend trying denial-only first: it may be enough.
@@ -595,4 +595,91 @@ Speed trail is sparser, smaller and mixed in size (0.05 to 0.13).
   Down, Dash, Swoop, Place and Blast have all been used, the bar fades away
   for good (`strata-used`). H brings it back. The empty item slot no longer
   says "Empty".
+
+**D25 to D28 notes: the rest of polish plan 2, and the big four (2026-11-02).**
+Paul: "i like all these, implement". Everything still open from both polish
+lists went in at once, except cloud shadows on the sea. He had just asked for
+even water without patches, so those are left out.
+
+*Feel (D25).*
+- **Countdown.** Three-two-one before Survival and Containment. You can fly
+  and aim, but the clock, waves and bots wait.
+- **Score pops.** Points rise from where you earned them: seals, meteors,
+  nibblers and bots.
+- **Empty click.** It shakes the crosshair and flashes the ammo arc.
+- **Clean seal.** A layer sealed without the core taking a crack scores
+  ×1.5, and the callout says so.
+- **Outro.** Rounds end with a 2.6-second orbit of the finished core before
+  the result card. Versus and watch mode skip it.
+- **Result stats.** The result counts the score up and adds accuracy (blaster
+  hits per shot), fastest layer and clean seals.
+- **Pause.** Callouts hide under the pause screen.
+
+*Rendering, world and sound (D25).*
+- **Power-ups.** Each wears its icon on a cube of its own colour.
+- **Blaster bolts.** They are stretched streaks pointed along their flight.
+- **Seal wave.** It rolls slower (0.045 seconds per unit of distance), and two
+  slow rings spread on the sea below.
+- **Islands.** Tall peaks get a volcano crater, rocks sit at every waterline,
+  and palms with curved trunks lean out over the shelf.
+- **Life.** Seven gulls wheel over the big island, two sailboats with V wakes
+  loop the islands, and smoke curls off the volcano.
+- **Sound.**
+  - An engine hum follows your speed (more while dashing or swooping).
+  - One whistle tracks the nearest meteor, rising and panning as it closes.
+  - Swoops pan left or right.
+  - The music pitches up 6% and gets 30% louder in the last 20 seconds or
+    on the last life.
+
+*Settings and systems (D26).*
+- **Settings.** Field of view (58° to 92°), crosshair size, and colour-blind
+  colours. In colour-blind mode you are amber, they are blue, and layers
+  alternate light and dark.
+- **Level gating.** Level 2 opens with a star on Level 1, and Level 3 with a
+  star on Level 2. Locked cards show a lock and say what opens them.
+  Finishing the tutorial does not unlock levels. A first star takes about
+  three seals, so the gate is light.
+- **Automatic quality.** If frame rate sits under 42 for three seconds, the
+  render resolution drops to 1.25×, then to 1× with no bloom. It only ever
+  steps down.
+- **Merged core.** Settled sealed blocks are one mesh of only their outside
+  faces, with corner shading baked into the vertex colours. That removes the
+  seam ticks (old known gap 3). Blocks still in their seal wave stay
+  instanced until they finish.
+
+*Touch controls (D26, `src/touch.js`).*
+- **Choosing touch.** Phones get "Play with touch" next to "Watch it play".
+- **Controls.**
+  - A stick wherever the left thumb lands; a flick to the edge swoops that way.
+  - Drag anywhere on the right to look.
+  - Place, Blast, Dash, Item, Rise, Sink and Pause buttons.
+  - A Wave button appears when the shockwave is ready.
+- **Aim and layout.**
+  - Aim assist widens from 3.2° to 7°.
+  - Under 540 pixels tall, the HUD and menus shrink to fit.
+  - In portrait, it asks you to turn the phone.
+- The tutorial is keyboard-only and is skipped on touch.
+
+*Modes (D27, D28).*
+- **Layer modifiers.** From layer 2, 55% of Survival layers roll one of four
+  rules, named on the tag and announced as the layer starts:
+  - Gold scores ×2 and turns the meter gold.
+  - Fragile makes meteors smash ×2 as far.
+  - Rush makes meteors fly ×1.35 as fast.
+  - Storm brings waves ×0.55 as often.
+- **Shockwave.** Each Survival seal charges it a third. When full, R (or
+  Wave) breaks every meteor and nibbler in the sky, with points, three rings
+  and a slow-motion beat.
+- **Daily.** A fourth Survival card, named for the date. It uses Crosswinds
+  rules with meteors, wave sizes and modifiers drawn from a seed made from the
+  date, so everyone gets the same run. The best score is kept per day, and no
+  stars are awarded.
+- **Plane colours.** Classic, Sunset (2 stars), Lilac (4), Mint (6) and
+  Gold (9), picked on the loadout screen and saved.
+- **Grow vs Shrink.** A match type the Versus host picks in the room.
+  - Coral is Grow and wins by sealing 4 layers before the 3:00 clock ends.
+  - Violet is Shrink: it can't build, both buttons blast, and its bots never
+    build. It wins by holding out.
+  - Sealed layers stay sealed (Q2 answered as denial only, as recommended).
+    The board shows layers sealed out of 4 against blocks broken.
 

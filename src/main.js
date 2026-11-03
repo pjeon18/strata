@@ -9,13 +9,14 @@ import * as FX from './fx.js';
 import * as T from './threats.js';
 import * as Items from './items.js';
 import * as AI from './builder.js';
-import { PAL, Post, sky, sea, islands, clouds, lights, fxOnly, paint } from './look.js';
+import { PAL, Post, sky, sea, islands, clouds, lights, fxOnly, paint, life, SEA_Y } from './look.js';
 import { buildShip, Pilot, DASH, SWOOP, flashShip, updateFlashes } from './ship.js';
-import { sfx, isMuted, setMuted, startMusic, musicLevel, musicState, muffle } from './audio.js';
-import { LEVELS, pickKind, starsFor, bestStars, saveStars } from './levels.js';
+import { sfx, isMuted, setMuted, startMusic, musicLevel, musicState, muffle, engine, whistle, musicLift } from './audio.js';
+import { LEVELS, pickKind, starsFor, bestStars, saveStars, daily, seeded, PLANES, totalStars } from './levels.js';
 import { LOADOUTS, Energy, pattern, tempo } from './weapons.js';
-import { createVersus, TEAM, teamOf, IMMUNE } from './versus.js';
+import { createVersus, TEAM, teamOf, IMMUNE, GOAL } from './versus.js';
 import { prefs, onPrefs, set as setPref, reset as resetPrefs } from './settings.js';
+import { touchControls } from './touch.js';
 
 // ---------- scene ----------
 const canvas = document.getElementById('c');
@@ -32,6 +33,7 @@ const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 scene.add(sky());
 const cloudLayer = clouds(rand); scene.add(cloudLayer);
 const ocean = sea(); scene.add(ocean, islands(rand));
+const world = life(rand); scene.add(world.group);
 lights(scene);
 scene.add(B.group, FX.group, T.group, Items.group);
 
@@ -83,14 +85,28 @@ const shield = new THREE.Mesh(new THREE.SphereGeometry(1.45, 40, 24), shieldMat)
 fxOnly(shield); shield.visible = false; scene.add(shield);
 const shieldHit = from => { shieldMat.uniforms.hitDir.value.copy(from).sub(pilot.pos).normalize(); shieldMat.uniforms.hitAge.value = 0; };
 
+const ZUP = new THREE.Vector3(0, 0, 1);
 const shotGeo = new THREE.BoxGeometry(0.46, 0.46, 0.46), shotMat = paint(PAL.mine, { roughness: 0.3, rim: 0.5 }), botShotMat = paint(PAL.bot, { roughness: 0.3, rim: 0.5 });
-const blastGeo = new THREE.SphereGeometry(0.24, 14, 10), blastMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.orange).multiplyScalar(2.2) });
+// a bolt is a short stretched streak with a hot core, pointed along its flight
+const blastGeo = new THREE.CapsuleGeometry(0.11, 0.85, 4, 10).rotateX(Math.PI / 2), blastMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.orange).multiplyScalar(2.2) });
 const botBlastMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.botGlow).multiplyScalar(1.8) });
 const bombGeo = new THREE.SphereGeometry(0.34, 18, 12), bombMat = paint(0x3a2a4a, { roughness: 0.3, rim: 0.6, rimColor: PAL.mine }), bombMatB = paint(0x3a2a4a, { roughness: 0.3, rim: 0.6, rimColor: PAL.botGlow });
 const bombRingGeo = new THREE.TorusGeometry(0.4, 0.05, 8, 24), bombRingMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffd27a).multiplyScalar(1.8) });
 
+// Automatic quality: if the frame rate sits low for a few seconds, step the
+// render resolution down, then drop the glow. It only ever steps down.
+let autoTier = 0, fpsAvg = 60, slowFor = 0, bootAt = performance.now();
+function autoQuality(rdt) {
+  if (document.hidden || prefs.quality === 'low' || autoTier >= 2 || performance.now() - bootAt < 6000 || rdt <= 0) return;
+  fpsAvg += (1 / rdt - fpsAvg) * 0.05;
+  slowFor = fpsAvg < 42 ? slowFor + rdt : Math.max(0, slowFor - rdt * 2);
+  if (slowFor < 3) return;
+  autoTier++; slowFor = 0; fpsAvg = 60;
+  if (autoTier >= 2) post.bloom.enabled = false;
+  resize();
+}
 function resize() {
-  const dpr = Math.min(devicePixelRatio, prefs.quality === 'low' ? 1 : 2), w = innerWidth, h = innerHeight;
+  const dpr = Math.min(devicePixelRatio, prefs.quality === 'low' ? 1 : [2, 1.25, 1][autoTier]), w = innerWidth, h = innerHeight;
   renderer.setPixelRatio(dpr); renderer.setSize(w, h, false);
   post.setSize(w, h, dpr);
   camera.aspect = w / h; camera.updateProjectionMatrix(); frameOffset();
@@ -102,6 +118,7 @@ const S = {
   mode: 'title', screen: 'splash', game: 'survival', level: LEVELS[0], loadout: 'rapid', auto: false,
   t: 0, slow: 0, shake: 0, flash: 0, ending: 0, stop: 0, immune: 0, dodged: false, lastStop: 0, kick: new THREE.Vector3(), fovKick: 0, kills: 0, dashN: 2,
   score: 0, shown: 0, layer: 1, sealed: 0, integrity: 3, cemented: 0, meteorsDown: 0,
+  count: 0, outroT: 0, fired: 0, landed: 0, clean: 0, hurtLayer: false, layerT: 0, fastest: 0, mod: null, charge: 0, rng: Math.random,
   crit: 0, time: 0, downed: 0, botT: 0, cleared: 0,
   left: 0, waveT: 0, wave: 0, queue: [], droneT: 0, itemT: 0,
   held: null, fx: { big: 0, boost: 0, shield: 0 }, seat: -1, team: 0, shipTeam: -1,
@@ -117,12 +134,22 @@ resize();
 onPrefs((p, k) => {
   if (k && k !== 'quality') return;
   const low = p.quality === 'low';
-  post.bloom.enabled = !low;
+  post.bloom.enabled = !low && autoTier < 2;
   if (renderer.shadowMap.enabled === low) {
     renderer.shadowMap.enabled = !low;
     scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => { m.needsUpdate = true; }); });
   }
   resize();
+});
+
+// crosshair size, and a colour-blind palette: you and them become amber and
+// blue, and neighbouring layers alternate light and dark so they part by
+// brightness as well as hue
+const BASE_PAL = { mine: PAL.mine, bot: PAL.bot, botGlow: PAL.botGlow, strata: PAL.strata };
+const CB_PAL = { mine: 0xf5a524, bot: 0x2f6fdb, botGlow: 0x8fb4ff, strata: [0xffe08a, 0x1f8fc8, 0xf4f1ea, 0xc96a00, 0x9fd8ff, 0x6b6f80, 0xffc7a6] };
+onPrefs((p, k) => {
+  if (!k || k === 'cross') document.documentElement.style.setProperty('--cross', p.cross);
+  if (!k || k === 'cb') { Object.assign(PAL, p.cb ? CB_PAL : BASE_PAL); if (k) { shotMat.color.setHex(PAL.mine); botShotMat.color.setHex(PAL.bot); B.sync(S.t); } }
 });
 
 // ---------- feel ----------
@@ -136,6 +163,7 @@ function hitstop(t, minor = false) {
 // your shot connected: a tick and a marker, or a bigger one for a kill
 function confirmHit(killed) {
   if (S.mode !== 'play' || S.auto) return;
+  S.landed++;
   HUD.hitMark(killed ? 'killed' : 'hit');
   if (killed) sfx.kill(); else sfx.hit();
   hitstop(killed ? 0.065 : 0.035, !killed);
@@ -181,9 +209,13 @@ function newRound(game = S.game) {
   pilot.mesh.visible = true;
   Object.assign(S, { score: 0, shown: 0, layer: 1, sealed: 0, integrity: 3, slow: 0, shake: 0, flash: 0, ending: 0, stop: 0, fovKick: 0, dashN: 2, immune: 0,
     crit: 0, time: 0, downed: 0, botT: 35, cemented: 0, meteorsDown: 0, cleared: 0,
+    count: 0, outroT: 0, fired: 0, landed: 0, clean: 0, hurtLayer: false, layerT: 0, fastest: 0,
     left: L.time, waveT: L.firstWave, wave: 0, queue: [], droneT: 0, itemT: game === 'tutorial' ? Infinity : 8,
     held: null, fx: { big: 0, boost: 0, shield: 0 } });
   energy.reset();
+  // the daily run draws its meteors and modifiers from today's seed
+  S.rng = L.seed ? seeded(L.seed) : Math.random; T.setRand(L.seed ? S.rng : null);
+  S.mod = null; S.charge = 0; applyMod(); HUD.wave(0, S.game === 'survival');
   if (game === 'containment') addBot();
   if (game !== 'versus') { recolorShip(-1); HUD.versusHud(false); }
   hudGame();
@@ -199,12 +231,15 @@ function newRound(game = S.game) {
 // ---------- the big beat ----------
 function sealBeat(made) {
   const o = S.lastPlace;
-  for (const i of made) B.seal(i, S.t, Math.hypot(G.cx(i) - o.x, G.cy(i) - o.y, G.cz(i) - o.z) * 0.02);
+  // the new layer lights up as a wave rolling out from the last block placed
+  for (const i of made) B.seal(i, S.t, Math.hypot(G.cx(i) - o.x, G.cy(i) - o.y, G.cz(i) - o.z) * 0.045);
   S.a = G.analyze();
   B.sync(S.t);
   const R0 = Math.cbrt(G.coreCount) * 1.1;
   FX.ring(new THREE.Vector3(), camera.position.clone().normalize(), 0xffffff, R0 * 2.6, 0.8);
   FX.ring(new THREE.Vector3(), camera.position.clone().normalize(), PAL.strata[S.layer % PAL.strata.length], R0 * 1.8, 0.65);
+  // and the sea below answers with two slow rings
+  for (const [r, life, d] of [[46, 1.8, 0], [30, 1.5, 220]]) setTimeout(() => FX.ring(new THREE.Vector3(0, SEA_Y + 0.4, 0), ZUP.clone().set(0, 1, 0), 0xffffff, r, life), d);
 }
 function sealLayer() {
   const made = G.cement(S.layer);
@@ -220,15 +255,24 @@ function sealLayer() {
     HUD.callout('They sealed it', CRIT - S.crit === 1 ? 'One more and it goes critical' : `${CRIT - S.crit} more and it goes critical`, 'bad');
     return;
   }
-  const pts = made.length * 10 * S.layer;
+  // a layer sealed without the core taking a crack scores half again
+  const clean = !S.hurtLayer && S.game === 'survival';
+  const pts = Math.round(made.length * 10 * S.layer * (clean ? 1.5 : 1) * (S.mod === 'gold' ? 2 : 1));
+  if (clean) S.clean++;
+  if (!S.fastest || S.layerT < S.fastest) S.fastest = S.layerT;
+  S.layerT = 0; S.hurtLayer = false;
+  popScore(S.lastPlace, `+${pts.toLocaleString()}`, 'big');
   S.score += pts; S.sealed++; S.layer++; S.cemented += made.length;
   HUD.bump();
   S.integrity = Math.min(3, S.integrity + 1);
+  // each seal charges the shockwave a third, and the next layer may roll a rule
+  if (S.game === 'survival') { S.charge = Math.min(3, S.charge + 1); HUD.wave(S.charge, true); if (S.charge === 3) setTimeout(() => notice('Shockwave ready. Press R to clear the sky.', 'lilac'), 1800); }
+  rollMod();
   S.slow = 0.32; S.flash = 0.55; S.shake = Math.max(S.shake, 0.55);
   // the shockwave knocks nibblers off
   for (const d of [...T.drones]) T.hitTest(d.pos, 1, kill);
   sfx.seal();
-  if (S.mode === 'play') HUD.callout('Sealed!', `+${pts.toLocaleString()}`, 'good');
+  if (S.mode === 'play') HUD.callout('Sealed!', clean ? `+${pts.toLocaleString()} · Clean ×1.5` : `+${pts.toLocaleString()}`, 'good');
   hudSeal(); hudIntegrity();
 }
 // versus: the layer's points split by who built it
@@ -237,9 +281,49 @@ function versusSeal(made, pts) {
   S.slow = 0.3; S.flash = 0.5; S.shake = Math.max(S.shake, 0.55);
   sfx.seal();
   const mine = pts[S.team], theirs = pts[1 - S.team];
+  if (V.mode === 'grow') { HUD.callout('Sealed!', `${V.score[0]} of ${GOAL} layers`, S.team === 0 ? 'good' : 'bad'); HUD.bump(); return hudSeal(); }
   HUD.callout('Sealed!', `${TEAM[0].name} +${pts[0].toLocaleString()} · ${TEAM[1].name} +${pts[1].toLocaleString()}`, mine >= theirs ? 'good' : 'bad');
   HUD.bump();
   hudSeal();
+}
+
+// ---------- layer modifiers ----------
+// From layer 2, each new Survival layer may roll a rule, named on the tag and
+// announced as it starts. The daily run rolls the same ones for everyone.
+const MODS = {
+  gold: { name: 'Gold layer', text: 'This layer scores double.' },
+  fragile: { name: 'Fragile layer', text: 'Meteors smash twice as far.' },
+  rush: { name: 'Rush layer', text: 'Meteors fly a third faster.' },
+  storm: { name: 'Storm layer', text: 'Waves come twice as often.' },
+};
+function rollMod() {
+  if (S.game !== 'survival') return;
+  const keys = Object.keys(MODS);
+  S.mod = S.rng() < 0.45 ? null : keys[Math.floor(S.rng() * keys.length)];
+  applyMod();
+  if (S.mod) setTimeout(() => S.mode === 'play' && notice(`${MODS[S.mod].name}. ${MODS[S.mod].text}`, 'lilac'), 1300);
+}
+function applyMod() {
+  T.mods.smash = S.mod === 'fragile' ? 2 : 1;
+  T.mods.speed = S.mod === 'rush' ? 1.35 : 1;
+  if (S.mod === 'storm') S.waveT = Math.min(S.waveT, S.level.every * 0.55);
+  HUD.modMeter(S.mod);
+}
+
+// ---------- shockwave ----------
+// Three seals fill it; R (or the Wave button) sends a ring out from the core
+// that breaks every meteor and nibbler within reach.
+function shockwave() {
+  if (S.game !== 'survival' || S.charge < 3 || S.mode !== 'play') return;
+  S.charge = 0; HUD.wave(0, true); used('wave');
+  const R = Math.cbrt(G.coreCount) * 0.8 + 20;
+  // every meteor in the sky breaks; the rings show it leaving the core
+  T.clearWithin(80, kill);
+  const n = camera.position.clone().normalize();
+  for (let k = 0; k < 3; k++) setTimeout(() => FX.ring(new THREE.Vector3(), n, k === 1 ? 0xbfefff : 0xffffff, R * (0.7 + k * 0.25), 0.7 + k * 0.15), k * 90);
+  S.flash = Math.max(S.flash, 0.6); S.shake = Math.max(S.shake, 0.8); S.slow = 0.25; hitstop(0.08);
+  sfx.seal(); sfx.impact();
+  HUD.callout('Shockwave!', '', 'good');
 }
 
 // ---------- shooting ----------
@@ -258,7 +342,8 @@ function targetFrom(origin, dir) {
 // Build assist: if your aim is within a few degrees of an open core face you
 // can see, the shot snaps to it. Building on top of your own loose blocks
 // still works when you aim at them directly.
-const ASSIST = Math.cos(THREE.MathUtils.degToRad(3.2));
+// touch aim is coarser, so the snap reaches further there
+let ASSIST = Math.cos(THREE.MathUtils.degToRad(3.2));
 let faceSet = null, faceSetOf = null;
 function openFaceCells() {
   if (faceSetOf !== S.a) {
@@ -306,6 +391,7 @@ function fireBuild(from, tgt, owner = 0, kind = 'single', seat = -1, visual = fa
 
 function fireBlast(from, dir, area, team, seat = -1, visual = false) {
   const m = new THREE.Mesh(blastGeo, team === 1 ? botBlastMat : blastMat); m.position.copy(from); fxOnly(m); scene.add(m);
+  m.quaternion.setFromUnitVectors(ZUP, dir);
   if (area) m.scale.setScalar(1.6);
   shots.push({ kind: 'blast', m, p: from.clone(), v: dir.clone().multiplyScalar(75), life: 0.7, area, team, seat, visual });
   if (seat === S.seat || seat < 0) { sfx.blast(); HUD.kick(); if (S.mode === 'play') muzzle(from, 0.42, 0.09); }
@@ -388,7 +474,8 @@ function kill(kind, p) {
   FX.burst(p, kind === 'meteor' ? PAL.plum : kind === 'bot' ? PAL.bot : 0x2d5566, 16, 10, 0.3);
   FX.puff(p, 0xffffff, 8, 1.2, 0.7);
   FX.ring(p, camera.position.clone().sub(p).normalize(), 0xffffff, 3, 0.35);
-  S.score += kind === 'meteor' ? 50 : kind === 'bot' ? 100 : 25;
+  const pts = kind === 'meteor' ? 50 : kind === 'bot' ? 100 : 25;
+  S.score += pts; popScore(p, `+${pts}`);
   if (kind === 'meteor') S.meteorsDown++;
   S.kills++;
   HUD.bump();
@@ -477,7 +564,7 @@ function updateShots(dt) {
         } else if (c === G.CORE) { FX.puff(s.p, 0xffffff, 3, 0.3, 0.3, 0.25); if (s.seat === S.seat || s.seat < 0) sfx.fizzle(); hit = true; }
       }
       s.m.position.copy(s.p);
-      FX.dot(s.p, PAL.sand, 0.16, 0.18);
+      if (Math.random() < 0.5) FX.dot(s.p, 0xffe2a0, 0.05 + Math.random() * 0.05, 0.14);
       if (hit) { scene.remove(s.m); shots.splice(k, 1); }
     }
   }
@@ -495,6 +582,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyE' && S.mode === 'play' && !S.auto) useItem();
   if (e.code === 'KeyQ' && !e.repeat && S.mode === 'play' && !S.auto) dash();
+  if (e.code === 'KeyR' && !e.repeat && S.mode === 'play' && !S.auto) shockwave();
   if (!e.repeat && S.mode === 'play' && !S.auto) doubleTap(e.code, e.timeStamp / 1000);
   if (e.code === 'Escape' && S.mode === 'play' && !locked) setMode('pause');
   if (e.code === 'Enter' && S.mode === 'play' && S.game === 'tutorial') leaveTutorial('menu');
@@ -547,6 +635,7 @@ HUD.mute(isMuted(), toggleMute);
 // title screens sit over the attract loop: splash → menu → (levels) → loadout
 function setMode(m, scr = S.screen) {
   S.mode = m; S.screen = scr;
+  document.body.classList.toggle('playing', m === 'play');
   musicLevel(m === 'pause' ? 'quiet' : 'normal');
   frameOffset();
   HUD.screen(m === 'title' ? scr : m === 'pause' ? 'pause' : m === 'over' ? 'result' : null);
@@ -558,7 +647,20 @@ function setMode(m, scr = S.screen) {
 const go = scr => { sfx.select(); setMode('title', scr); };
 function start(game = S.game) {
   sfx.unlock(); lock();
-  HUD.wipe(() => { newRound(game); setMode('play'); if (game !== 'tutorial') HUD.callout('Go!', '', 'good'); });
+  HUD.wipe(() => {
+    newRound(game); setMode('play');
+    // three, two, one: you can fly and aim, but the clock, waves and bots wait
+    if (game !== 'tutorial') { S.count = 3; countBeat(3); }
+  });
+}
+function countBeat(n) {
+  if (n > 0) { HUD.callout(String(n), '', 'good'); sfx.tick(); } else { HUD.callout('Go!', '', 'good'); sfx.select(); sfx.dashReady(); }
+}
+function countdown(dt) {
+  const before = Math.ceil(S.count);
+  S.count = Math.max(0, S.count - dt);
+  const now = Math.ceil(S.count);
+  if (now !== before) countBeat(now);
 }
 function toMenu() { HUD.clearCallout(); HUD.wipe(() => { newRound('survival'); setMode('title', 'menu'); }); }
 
@@ -571,6 +673,33 @@ $('splash').onclick = () => {
   sfx.unlock(); startMusic();
   if (touchOnly) return go('touch');
   if (!tutored()) return start('tutorial');
+  go('menu');
+};
+// touch play: the on-screen controls drive the same inputs as the keyboard
+let stickState = null;
+$('playTouch').onclick = () => {
+  sfx.select();
+  document.body.classList.add('touch');
+  ASSIST = Math.cos(THREE.MathUtils.degToRad(7));
+  if (!stickState) stickState = touchControls({
+    onLook: (dx, dy) => {
+      if (S.mode !== 'play') return;
+      const k = 0.0062 * prefs.sens;
+      yaw -= dx * k; pitch = THREE.MathUtils.clamp(pitch - dy * k * (prefs.invert ? -1 : 1), -1.45, 1.45);
+    },
+    onButton: (id, down) => {
+      if (id === 'place') mouseL = down;
+      else if (id === 'blast') mouseR = down;
+      else if (id === 'up') down ? keys.add('Space') : keys.delete('Space');
+      else if (id === 'down') down ? keys.add('ShiftLeft') : keys.delete('ShiftLeft');
+      else if (!down) return;
+      else if (id === 'dash' && S.mode === 'play') dash();
+      else if (id === 'item' && S.mode === 'play') useItem();
+      else if (id === 'wave') shockwave();
+      else if (id === 'pause' && S.mode === 'play') setMode('pause');
+    },
+    onSwoop: way => { if (S.mode === 'play') swoop(way); },
+  });
   go('menu');
 };
 $('watchIt').onclick = () => { sfx.select(); document.body.classList.add('watch'); HUD.wipe(() => { S.auto = true; newRound('survival'); setMode('play'); }); };
@@ -590,7 +719,14 @@ HUD.menu(pick => {
   S.game = pick;
   if (pick === 'survival') go('levels'); else go('loadout');
 }, sfx.select);
-HUD.levels(LEVELS, bestStars, id => { S.level = LEVELS[id - 1]; go('loadout'); }, () => go('menu'), sfx.select).select(0, true);
+// Level 2 opens with a star on Level 1, Level 3 with a star on Level 2
+const levelOpen = id => id === 'daily' || id === 1 || bestStars(id - 1) >= 1;
+const LIST = [...LEVELS, daily()];
+HUD.levels(LIST, bestStars, id => {
+  if (id === 'daily') { S.level = daily(); return go('loadout'); }
+  if (!levelOpen(+id)) { sfx.empty(); const c = document.querySelector(`.lvl${id}`); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); return; }
+  S.level = LEVELS[id - 1]; go('loadout');
+}, () => go('menu'), sfx.select, levelOpen).select(0, true);
 const loadPicker = HUD.loadouts(LOADOUTS, k => {
   S.loadout = k;
   try { localStorage.setItem('strata-loadout', k); } catch {}
@@ -625,7 +761,7 @@ function chaseCamera(dt) {
   camera.lookAt(tmp.copy(camPos).add(F));
   // super speed pulls the lens wide
   // a dash and recoil punch it briefly
-  const fov = (S.fx.boost > 0 ? 82 : 68) + (pilot.dashing ? 9 : 0) + S.fovKick;
+  const fov = prefs.fov + (S.fx.boost > 0 ? 14 : 0) + (pilot.dashing ? 9 : 0) + S.fovKick;
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-12 * dt)); camera.updateProjectionMatrix(); }
 }
 
@@ -649,7 +785,7 @@ function orbitCamera(rdt = 0) {
     camera.position.lerpVectors(from, camPos, e);
   } else camera.position.copy(camPos);
   camera.lookAt(0, -1.5, 0);
-  if (camera.fov !== 68) { camera.fov = 68; camera.updateProjectionMatrix(); }
+  if (camera.fov !== prefs.fov) { camera.fov = prefs.fov; camera.updateProjectionMatrix(); }
 }
 
 // ---------- AI ----------
@@ -797,6 +933,7 @@ function wishFromKeys(out) {
   out.set(0, 0, 0);
   if (keys.has('KeyW')) out.add(F); if (keys.has('KeyS')) out.sub(F);
   if (keys.has('KeyD')) out.add(R); if (keys.has('KeyA')) out.sub(R);
+  if (stickState) { out.addScaledVector(F, stickState.sy).addScaledVector(R, stickState.sx); }
   if (keys.has('Space')) out.y += 1; if (keys.has('ShiftLeft') || keys.has('ShiftRight')) out.y -= 1;
   if (out.lengthSq() > 1) out.normalize();
   return out;
@@ -875,7 +1012,7 @@ function swoop(way) {
   Object.assign(swoopAim, { y0: yaw, dy: THREE.MathUtils.euclideanModulo(y1 - yaw + Math.PI, Math.PI * 2) - Math.PI, p0: pitch, p1 });
   if (S.tut) S.tut.swoops++;
   used('swoop');
-  sfx.swoop();
+  sfx.swoop(way === 'left' ? -0.7 : way === 'right' ? 0.7 : 0);
   S.fovKick += 6;
   kickoff(to.clone().sub(from));
 }
@@ -919,7 +1056,7 @@ function trySecondary(dt, aimHit) {
   S.blastCD -= dt;
   if (S.blastCD > 0 || pilot.stun > 0) return;
   if (!energy.use(L.cost)) return noAmmo();
-  used('blast');
+  used('blast'); S.fired++;
   const aimPt = camera.position.clone().addScaledVector(F, aimHit ? aimHit.t : 60);
   const from = pilot.nose(), dir = aimPt.sub(from).normalize();
   const vs = S.game === 'versus', team = vs ? S.team : undefined, seat = vs ? S.seat : -1, guest = vs && !V.isHost;
@@ -929,7 +1066,16 @@ function trySecondary(dt, aimHit) {
   if (guest) V.send({ k: 'blast', kind: L.kind, from: from.toArray(), dir: dir.toArray(), area: !!L.area });
   S.blastCD = L.rate;
 }
-function noAmmo() { if (S.emptyCD <= 0) { sfx.empty(); S.emptyCD = 0.25; } }
+// an empty click: the crosshair shakes and the ammo arc flashes
+function noAmmo() { if (S.emptyCD <= 0) { sfx.empty(); S.emptyCD = 0.25; if (!S.auto) HUD.emptyNudge(); } }
+// points rise from where you earned them
+const popV = new THREE.Vector3();
+function popScore(p, text, size) {
+  if (S.auto || S.mode !== 'play') return;
+  popV.copy(p).project(camera);
+  if (popV.z > 1 || Math.abs(popV.x) > 1.05 || Math.abs(popV.y) > 1.05) return;
+  HUD.floater(text, (popV.x * 0.5 + 0.5) * innerWidth, (-popV.y * 0.5 + 0.5) * innerHeight, size);
+}
 
 function play(dt) {
   fly(dt);
@@ -972,6 +1118,8 @@ function buildGuns(dt) {
 
 function survive(dt) {
   buildGuns(dt);
+  if (S.count > 0) return countdown(dt);
+  S.layerT += dt;
   // the level: a clock and waves of meteors
   const LV = S.level;
   S.left -= dt; S.time += dt;
@@ -984,9 +1132,9 @@ function survive(dt) {
     S.wave++;
     // waves start small and grow to full size over the first 50 seconds
     const ramp = Math.min(1, 0.3 + S.time / 70), lo = Math.max(1, Math.round(LV.size[0] * ramp)), hi = Math.max(lo, Math.round(LV.size[1] * ramp));
-    const n = lo + Math.floor(Math.random() * (hi - lo + 1));
-    for (let k = 0; k < n; k++) S.queue.push({ at: k * 0.45, kind: pickKind(LV.mix) });
-    S.waveT = LV.every;
+    const n = lo + Math.floor(S.rng() * (hi - lo + 1));
+    for (let k = 0; k < n; k++) S.queue.push({ at: k * 0.45, kind: pickKind(LV.mix, S.rng) });
+    S.waveT = LV.every * (S.mod === 'storm' ? 0.55 : 1);
     sfx.warn();
     notice(n > 1 ? `Wave ${S.wave} · ${n} meteors` : `Wave ${S.wave} · 1 meteor`, 'lilac');
   }
@@ -1073,10 +1221,13 @@ function buildMine(tgt, kind) {
 function versusPlay(dt) {
   const L = LOADOUTS[S.loadout];
   const kind = S.fx.big > 0 ? 'big' : L.build.pattern;
-  const tgt = aimTarget(camera.position, F);
+  // Grow vs Shrink: Shrink can't build, so both buttons blast
+  const breaker = V.mode === 'grow' && S.team === 1;
+  const tgt = breaker ? null : aimTarget(camera.position, F);
   HUD.cross(!!tgt);
   showGhost(tgt ? (kind === 'single' ? [[tgt.x, tgt.y, tgt.z]] : cellsFor(tgt, kind)) : []);
-  if (V.phase === 'playing') {
+  if (V.phase === 'playing' && breaker) { if (mouseL || mouseR) trySecondary(dt, G.raycast(camera.position, F, 60)); else S.blastCD -= dt; }
+  else if (V.phase === 'playing') {
     S.fireCD -= dt;
     if (mouseL && S.fireCD <= 0 && tgt && pilot.stun <= 0) {
       const cost = kind === 'big' ? 6 : L.build.cost;
@@ -1089,12 +1240,23 @@ function versusPlay(dt) {
     if (mouseR) trySecondary(dt, G.raycast(camera.position, F, 60)); else S.blastCD -= dt;
   }
   V.update(dt);
-  HUD.board(V.score, clock(Math.max(0, V.left)), S.team, V.left < 10);
+  HUD.board(V.mode === 'grow' ? [`${V.score[0]}/${GOAL}`, V.score[1]] : V.score, clock(Math.max(0, V.left)), S.team, V.left < 10);
+}
+// plane colour: picked on the loadout screen, unlocked by total stars
+let planeIdx = 0;
+try { planeIdx = Math.min(PLANES.length - 1, Number(localStorage.getItem('strata-plane') || 0)); } catch {}
+if (PLANES[planeIdx].stars > totalStars()) planeIdx = 0;
+function pickPlane(k) {
+  if (PLANES[k].stars > totalStars()) return sfx.empty();
+  planeIdx = k; sfx.select();
+  try { localStorage.setItem('strata-plane', String(k)); } catch {}
+  S.shipTeam = null; recolorShip(-1);
+  HUD.planes(PLANES, totalStars(), planeIdx, pickPlane);
 }
 function recolorShip(team) {
   if (S.shipTeam === team) return;
   scene.remove(pilot.mesh);
-  pilot.mesh = team < 0 ? buildShip() : buildShip(TEAM[team].color, TEAM[team].glow, 0x22406e);
+  pilot.mesh = team < 0 ? buildShip(PLANES[planeIdx].accent, PLANES[planeIdx].ring) : buildShip(TEAM[team].color, TEAM[team].glow, 0x22406e);
   scene.add(pilot.mesh);
   S.shipTeam = team;
 }
@@ -1108,7 +1270,7 @@ function startVersus(seat, role) {
   camPos.copy(sp).addScaledVector(fwd, -6);
   HUD.versusHud(true, `${V.seats[seat].name} · ${LOADOUTS[role].role}`, TEAM[S.team]);
   setMode('play');
-  HUD.callout('Go!', `You're on ${TEAM[S.team].name}`, 'good');
+  HUD.callout('Go!', V.mode === 'grow' ? (S.team === 0 ? `Seal ${GOAL} layers before time runs out` : 'Break their blocks until time runs out') : `You're on ${TEAM[S.team].name}`, 'good');
   lock();
 }
 function versusOver(res) {
@@ -1156,7 +1318,8 @@ function mirrorShot(seat, kind, from, a, pat) {
   else fireBlast(p, new THREE.Vector3(...a), false, team, seat, true);
 }
 // host: a guest's intent becomes a real shot
-function remoteBuild(seat, m) { fireBuild(new THREE.Vector3(...m.from), m.tgt, teamOf(seat), m.kind || 'single', seat, false); }
+function remoteBuild(seat, m) {
+  if (V.mode === 'grow' && teamOf(seat) === 1) return; fireBuild(new THREE.Vector3(...m.from), m.tgt, teamOf(seat), m.kind || 'single', seat, false); }
 function remoteBlast(seat, m) {
   const team = teamOf(seat), from = new THREE.Vector3(...m.from), dir = new THREE.Vector3(...m.dir);
   if (m.kind === 'laser') fireLaser(from, dir, team, seat); else if (m.kind === 'bomb') fireBomb(from, dir, team, seat); else fireBlast(from, dir, m.area, team, seat);
@@ -1175,6 +1338,7 @@ function contain(dt) {
   const h = G.raycast(camera.position, F, 60);
   HUD.cross(!!h && G.get(h.x, h.y, h.z) === G.LOOSE);
   if (!S.auto && (mouseL || mouseR)) trySecondary(dt, h); else S.blastCD -= dt;
+  if (S.count > 0) return countdown(dt);
   S.time += dt; S.score += dt * 5;
   updateBots(dt);
   HUD.clock(clock(S.time));
@@ -1207,7 +1371,7 @@ function impact(p, cracked) {
   const near = Math.max(0, 1 - camera.position.distanceTo(p) / 30);
   S.shake = Math.max(S.shake, 0.25 + near * 0.5);
   if (cracked && !S.ending && S.game !== 'tutorial') {
-    S.integrity--; sfx.crack(); S.shake = 0.9;
+    S.integrity--; S.hurtLayer = true; sfx.crack(); S.shake = 0.9;
     hitstop(0.14); S.flash = Math.max(S.flash, 0.45); muffle(0.6);
     hudIntegrity();
     if (S.integrity <= 0) return finish('Cracked!', 'bad');
@@ -1220,6 +1384,30 @@ function timeUp() { finish('Finish!', 'good'); }
 function finish(word, tone) {
   S.slow = 1; S.shake = Math.max(S.shake, 0.5); S.ending = 1.7;
   HUD.callout(word, '', tone);
+}
+
+// End of a round: the HUD clears and the camera swings slowly round the
+// finished core for a couple of seconds before the result card.
+const OUTRO = 2.6, outroFrom = new THREE.Vector3();
+let outroR = 20, outroA = 0, outroY = 0;
+function outro() {
+  HUD.clearCallout();
+  S.mode = 'outro'; S.outroT = OUTRO;
+  HUD.screen('outro'); HUD.danger(false); showGhost([]);
+  document.exitPointerLock?.();
+  const R = Math.cbrt(G.coreCount) * 1.1;
+  outroFrom.copy(camera.position);
+  outroR = Math.max(R * 2.6 + 8, Math.hypot(camera.position.x, camera.position.z));
+  outroA = Math.atan2(camera.position.x, camera.position.z); outroY = camera.position.y;
+  const what = S.game === 'containment' ? `You held out for ${clock(S.time)}` : S.sealed === 1 ? '1 layer sealed' : `${S.sealed} layers sealed`;
+  setTimeout(() => S.mode === 'outro' && HUD.callout(S.game === 'containment' ? 'Held!' : 'Strata', what, S.game === 'containment' ? 'bad' : 'good'), 350);
+}
+function outroCamera(rdt) {
+  const k = 1 - S.outroT / OUTRO, e = 1 - (1 - k) ** 3, a = outroA + e * 1.1;
+  const want = new THREE.Vector3(Math.sin(a) * outroR, THREE.MathUtils.lerp(outroY, outroR * 0.32, e), Math.cos(a) * outroR);
+  camera.position.lerpVectors(outroFrom, want, Math.min(1, k * 3));
+  camera.lookAt(0, 0, 0);
+  if (camera.fov !== prefs.fov) { camera.fov += (prefs.fov - camera.fov) * (1 - Math.exp(-6 * rdt)); camera.updateProjectionMatrix(); }
 }
 
 function best(key, v) {
@@ -1237,21 +1425,49 @@ function gameOver() {
   const total = Math.round(S.score).toLocaleString();
   if (S.game === 'containment') {
     HUD.result({ big: clock(S.time), unit: 'held off', record: best('containment', Math.floor(S.time)),
-      cols: [['Bots downed', S.downed], ['Blocks cleared', S.cleared], ['Their layers', S.crit]], total });
+      cols: [['Bots downed', S.downed], ['Blocks cleared', S.cleared], ['Their layers', S.crit]], total,
+      extras: [['Accuracy', accuracy()]] });
   } else {
     const L = S.level, stars = starsFor(L, S.score);
+    if (L.id === 'daily') {
+      HUD.result({ big: total, unit: L.name, record: best(`daily-${L.key}`, Math.round(S.score)), count: Math.round(S.score),
+        next: `Today's best is ${Math.max(Math.round(S.score), Number(localStorage.getItem(`strata-best-daily-${L.key}`) || 0)).toLocaleString()} points. A new set of meteors comes tomorrow.`,
+        cols: [['Layers', S.sealed], ['Blocks', S.cemented], ['Meteors', S.meteorsDown]], total,
+        extras: [['Accuracy', accuracy()], ['Fastest layer', S.fastest > 0.5 ? `${S.fastest.toFixed(1)} s` : '–'], ['Clean seals', S.clean]] });
+      HUD.wipe(() => setMode('over')); document.exitPointerLock?.();
+      return;
+    }
     saveStars(L.id, stars);
-    HUD.refreshLevelStars(LEVELS, bestStars);
+    HUD.refreshLevelStars(LIST, bestStars, levelOpen); HUD.planes(PLANES, totalStars(), planeIdx, pickPlane);
     const ORD = ['first', 'second', 'third'];
     const next = stars < 3 ? `You needed ${(L.stars[stars] - Math.round(S.score)).toLocaleString()} more points for the ${ORD[stars]} star.` : 'You earned all three stars on this level.';
     HUD.result({ big: total, unit: `Level ${L.id} · ${L.name}`, record: best(`survival-${L.id}`, Math.round(S.score)), stars,
       next, nextLevel: !S.auto && L.id < LEVELS.length && bestStars(L.id) >= 1,
-      cols: [['Layers', S.sealed], ['Blocks', S.cemented], ['Meteors', S.meteorsDown]], total });
+      cols: [['Layers', S.sealed], ['Blocks', S.cemented], ['Meteors', S.meteorsDown]], total, count: Math.round(S.score),
+      extras: [['Accuracy', accuracy()], ['Fastest layer', S.fastest > 0.5 ? `${S.fastest.toFixed(1)} s` : '–'], ['Clean seals', S.clean]] });
     for (let k = 0; k < stars; k++) setTimeout(() => sfx.star(k), 900 + k * 280);
   }
   HUD.wipe(() => setMode('over'));
   document.exitPointerLock?.();
 }
+
+// the continuous sounds follow the round: engine with your speed, a whistle
+// for the nearest meteor, and the music lifts when the round gets tight
+const camV = new THREE.Vector3();
+let soundT = 0;
+function soundTick() {
+  if ((soundT += 1) % 3) return;
+  const live = S.mode === 'play' && !S.auto;
+  engine(pilot.vel.length() / 17 + (pilot.dashing || pilot.swooping ? 0.5 : 0), live);
+  let near = null, eta = 99;
+  if (live) for (const m of T.meteors) if ((m.eta ?? 99) < eta) { eta = m.eta; near = m; }
+  if (near) camV.copy(near.pos).applyMatrix4(camera.matrixWorldInverse);
+  whistle(1 - eta / 3.5, near ? THREE.MathUtils.clamp(camV.x / Math.max(1, -camV.z), -1, 1) : 0, live && !!near && eta < 3.5);
+  const tight = live && ((S.game === 'survival' && (S.left < 20 || S.integrity <= 1)) || (S.game === 'containment' && S.crit >= CRIT - 1));
+  musicLift(tight ? 1 : 0);
+}
+
+const accuracy = () => (S.fired ? `${Math.min(100, Math.round((S.landed / S.fired) * 100))}%` : '–');
 
 // ---------- hud ----------
 function hudGame() {
@@ -1265,7 +1481,8 @@ function hudSeal() {
   const covered = S.a.totalFaces - S.a.exposedFaces, c = S.game === 'containment';
   if (S.game === 'versus') return HUD.meter(covered, S.a.totalFaces, S.team === 1);
   HUD.meter(covered, S.a.totalFaces, c);
-  HUD.tag(c ? `Layer ${S.layer}` : S.game === 'tutorial' ? `Tutorial · Layer ${S.layer}` : `Level ${S.level.id} · Layer ${S.layer}`);
+  const where = S.level.id === 'daily' ? 'Daily' : `Level ${S.level.id}`;
+  HUD.tag(c ? `Layer ${S.layer}` : S.game === 'tutorial' ? `Tutorial · Layer ${S.layer}` : `${where} · Layer ${S.layer}${S.mod ? ` · ${MODS[S.mod].name.split(' ')[0]}` : ''}`);
   if (S.mode !== 'play' || noticeT > 0) return;
   // the left-edge tab names the moment: nearly sealed, or one from critical
   if (c) HUD.tab(S.crit === CRIT - 1 ? 'One more and it goes critical' : null, 'violet');
@@ -1317,7 +1534,8 @@ function frame(rdt) {
   let dt = rdt;
   if (S.slow > 0) { S.slow -= rdt; dt *= 0.15; }
   if (S.stop > 0) { S.stop -= rdt; dt = 0; }
-  if (S.ending > 0) { S.ending -= rdt; if (S.ending <= 0) gameOver(); }
+  if (S.ending > 0) { S.ending -= rdt; if (S.ending <= 0) (S.auto || S.game === 'versus' ? gameOver() : outro()); }
+  if (S.outroT > 0 && (S.outroT -= rdt) <= 0) gameOver();
   if (S.mode !== 'pause' || S.game === 'versus') {
     S.t += dt;
     cloudLayer.rotation.y += dt * 0.006;
@@ -1326,6 +1544,7 @@ function frame(rdt) {
       if (S.sealed >= 2) { attractReset += dt; if (attractReset > 3) { attractReset = 0; newRound('survival'); } }
       autopilot(dt); orbitCamera(rdt);
     } else if (S.mode === 'play' || (S.mode === 'pause' && S.game === 'versus')) play(dt);
+    else if (S.mode === 'outro') outroCamera(rdt);
     else orbitCamera(rdt);
     updateShots(dt);
     FX.update(dt);
@@ -1350,6 +1569,8 @@ function frame(rdt) {
   S.flash = Math.max(0, S.flash - rdt * 2.2);
   HUD.flash(S.flash * S.flash);
   ocean.material.uniforms.t.value = S.t;
+  world.update(S.t);
+  soundTick();
   // balance sims step thousands of frames: skip drawing them
   if (!S.headless) post.render(scene, camera);
 }
@@ -1357,7 +1578,8 @@ function tick(now) {
   requestAnimationFrame(tick);
   // an old rAF timestamp can land after the watchdog moved `last` forward;
   // a negative step would run every decay backwards, so clamp at zero
-  frame(Math.max(0, Math.min(0.05, (now - last) / 1000))); last = Math.max(last, now);
+  const rdt = Math.max(0, Math.min(0.05, (now - last) / 1000));
+  frame(rdt); autoQuality(rdt); last = Math.max(last, now);
 }
 // the embedded preview throttles rAF; keep stepping if it stalls
 setInterval(() => { if (performance.now() - lastStep > 250) { frame(0.05); last = performance.now(); } }, 60);
@@ -1380,6 +1602,9 @@ function warmUp() {
   shield.visible = false; ghosts[0].visible = false;
   newRound('survival');
 }
+
+S.shipTeam = null; recolorShip(-1);
+HUD.planes(PLANES, totalStars(), planeIdx, pickPlane);
 
 const params = new URLSearchParams(location.search);
 const startGame = params.get('mode') === 'containment' ? 'containment' : 'survival';

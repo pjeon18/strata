@@ -58,6 +58,11 @@ function ac() {
   return ctx;
 }
 
+// where one-shot sounds go: the master, or a panner for sounds with a side
+let out = null;
+const dest = () => out || master;
+function panned(pan, fn) { const c = ac(), p = c.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); p.connect(master); out = p; fn(); out = null; }
+
 function tone(freq, dur, type = 'triangle', vol = 0.2, when = 0, slide = 0) {
   const c = ac(), t = c.currentTime + when;
   const o = c.createOscillator(), g = c.createGain();
@@ -66,7 +71,7 @@ function tone(freq, dur, type = 'triangle', vol = 0.2, when = 0, slide = 0) {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g).connect(dest()); o.start(t); o.stop(t + dur + 0.02);
 }
 
 function noise(dur, vol = 0.2, freq = 1200, when = 0) {
@@ -77,7 +82,7 @@ function noise(dur, vol = 0.2, freq = 1200, when = 0) {
   const s = c.createBufferSource(); s.buffer = b;
   const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq;
   const g = c.createGain(); g.gain.value = vol;
-  s.connect(f).connect(g).connect(master); s.start(t);
+  s.connect(f).connect(g).connect(dest()); s.start(t);
 }
 
 const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
@@ -117,7 +122,51 @@ export const sfx = {
   // you got hit: a body thud, a crunch and a thin ringing tone
   hurt: () => { noise(0.3, 0.4, 900); tone(80, 0.3, 'sine', 0.35, 0, 0.45); tone(3100, 0.7, 'sine', 0.025, 0.04); },
   dash: () => { noise(0.22, 0.16, 5200); tone(240, 0.2, 'sawtooth', 0.04, 0, 2.6); },
-  swoop: () => { noise(0.45, 0.12, 3600); tone(300, 0.5, 'triangle', 0.06, 0, 2); },
+  // pan: -1 left, 1 right, so a swoop sweeps across with you
+  swoop: (pan = 0) => panned(pan, () => { noise(0.45, 0.12, 3600); tone(300, 0.5, 'triangle', 0.06, 0, 2); }),
   dashReady: () => tone(1320, 0.05, 'sine', 0.035),
   dodge: () => { tone(988, 0.12, 'triangle', 0.1); tone(1480, 0.22, 'triangle', 0.08, 0.06); noise(0.18, 0.05, 6000); },
 };
+
+// ---------- continuous sounds ----------
+// Engine: a soft two-oscillator hum whose pitch and level follow your speed.
+// Whistle: one voice for the nearest meteor, rising and panning as it closes.
+let eng = null, whi = null;
+function voices() {
+  const c = ac();
+  if (eng) return c;
+  const mk = (type, f) => { const o = c.createOscillator(); o.type = type; o.frequency.value = f; o.start(); return o; };
+  const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700;
+  eng = { a: mk('sawtooth', 70), b: mk('triangle', 140), lp, g: c.createGain() };
+  eng.g.gain.value = 0; eng.a.connect(lp); eng.b.connect(lp); lp.connect(eng.g).connect(master);
+  whi = { o: mk('sine', 900), p: c.createStereoPanner(), g: c.createGain() };
+  whi.g.gain.value = 0; whi.o.connect(whi.g).connect(whi.p).connect(master);
+  return c;
+}
+// speed01: 0 still to 1 flat out (more while dashing); on: false fades it out
+export function engine(speed01, on) {
+  if (!ctx && !on) return;
+  const c = voices(), t = c.currentTime, k = Math.min(1.6, speed01);
+  eng.a.frequency.setTargetAtTime(62 + k * 48, t, 0.08); eng.b.frequency.setTargetAtTime(124 + k * 96, t, 0.08);
+  eng.lp.frequency.setTargetAtTime(500 + k * 900, t, 0.1);
+  eng.g.gain.setTargetAtTime(on ? 0.035 + k * 0.035 : 0, t, on ? 0.12 : 0.05);
+}
+// close01: 0 far to 1 about to land; pan: where it is on screen
+export function whistle(close01, pan, on) {
+  if (!ctx && !on) return;
+  const c = voices(), t = c.currentTime, k = Math.max(0, Math.min(1, close01));
+  whi.o.frequency.setTargetAtTime(700 + k * 900, t, 0.06);
+  whi.p.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, 0.06);
+  whi.g.gain.setTargetAtTime(on ? k * k * 0.045 : 0, t, 0.08);
+}
+// Music that builds: brighter (pitched up a touch) and a little louder in the
+// last 20 seconds or on your last life. k from 0 to 1.
+let lift = 0;
+export function musicLift(k) {
+  if (Math.abs(k - lift) < 0.01) return;
+  lift = k;
+  music.preservesPitch = false; music.mozPreservesPitch = false; music.webkitPreservesPitch = false;
+  music.playbackRate = 1 + 0.06 * k;
+  LEVEL.normal = 0.32 * (1 + 0.3 * k);
+  if (level === 'normal') musicLevel('normal');
+}

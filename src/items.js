@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import * as G from './grid.js';
 import { paint } from './look.js';
 import * as FX from './fx.js';
+import { ICON } from './hud.js';
 
 // Power-ups float around the core. Fly through one to hold it (one slot),
 // press E to use it.
@@ -20,7 +21,20 @@ export const smokes = [];
 
 const boxGeo = new RoundedBoxGeometry(0.95, 0.95, 0.95, 3, 0.26);
 const haloGeo = new THREE.TorusGeometry(0.95, 0.04, 8, 48);
-const mats = Object.fromEntries(Object.entries(ITEMS).map(([k, v]) => [k, paint(v.color, { roughness: 0.25, rim: 0.6, emissive: v.color, emissiveIntensity: 0.25 })]));
+// each cube wears its icon in white on its own colour, so you know what it
+// is before you grab it
+function iconTex(kind, color) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), hex = `#${color.toString(16).padStart(6, '0')}`;
+  g.fillStyle = hex; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const img = new Image();
+  img.onload = () => { g.drawImage(img, 30, 30, 68, 68); t.needsUpdate = true; };
+  const svg = ICON[kind].replace('<svg ', `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" fill="#fff" color="#fff" `).replace(/currentColor/g, '#fff');
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  return t;
+}
+const mats = Object.fromEntries(Object.entries(ITEMS).map(([k, v]) => [k, paint(0xffffff, { map: iconTex(k, v.color), roughness: 0.25, rim: 0.6, emissive: v.color, emissiveIntensity: 0.18 })]));
 const haloMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffffff).multiplyScalar(1.5) });
 const LIFE = 30, MAX = 3;
 

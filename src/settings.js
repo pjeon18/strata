@@ -1,7 +1,7 @@
 // Player settings, saved between visits. Everything else reads `prefs` and
 // listens with onPrefs; set() saves and tells every listener.
 const KEY = 'strata-settings';
-const DEFAULTS = { sens: 1, invert: false, music: 0.8, sfx: 0.8, shake: 1, quality: 'high' };
+const DEFAULTS = { sens: 1, invert: false, music: 0.8, sfx: 0.8, shake: 1, quality: 'high', fov: 68, cross: 1, cb: false };
 
 export const prefs = { ...DEFAULTS };
 try { Object.assign(prefs, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
