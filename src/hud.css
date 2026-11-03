@@ -146,7 +146,7 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
   -webkit-mask: linear-gradient(to top, #000 35%, transparent); mask: linear-gradient(to top, #000 35%, transparent); }
 @keyframes bandIn { from { opacity: 0; } }
 .logo { position: fixed; left: 50%; bottom: 7vh; transform: translateX(-50%); text-align: center; line-height: .9; }
-.logo .word { display: flex; padding: 0 .1em; font-size: clamp(130px, 19vw, 250px); font-weight: 900; letter-spacing: -.02em; color: #fff; transform: translateX(120vw);
+.logo .word { display: flex; padding: 0 .1em; font-size: clamp(100px, 13vw, 200px); font-weight: 900; letter-spacing: -.045em; color: #fff; transform: translateX(120vw);
   /* stacked layers give the letters thickness; the soft shadows below set them in the air above the water */
   text-shadow: 0 2px 0 #e6f0f9, 0 4px 0 #d6e5f2, 0 6px 0 #c4d8ea, 0 8px 0 #b2cbe1, 0 10px 0 #a0bed8,
     0 13px 3px rgba(20, 50, 100, .22), 0 24px 30px rgba(10, 40, 90, .3), 0 44px 70px rgba(10, 40, 90, .22);
@@ -159,7 +159,7 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
   80% { transform: translateX(-2%) skewX(-16deg); animation-timing-function: cubic-bezier(.2, 1.3, .4, 1); }
   100% { transform: none; } }
 /* then a slow wave: one letter lifts at a time, left to right, with a rest between passes */
-#splash.enter .logo .word i { animation: wave 4.2s ease-in-out calc(1.1s + var(--k) * .38s) infinite; }
+#splash.enter .logo .word i { animation: wave 4.2s ease-in-out calc(1.1s + var(--k) * .3s) infinite; }
 @keyframes wave { 0%, 22%, 100% { transform: none; } 11% { transform: translateY(-16px); } }
 .press { position: fixed; right: 34px; bottom: 26px; display: flex; align-items: center; gap: 8px; color: #fff; text-shadow: 0 1px 6px rgba(20, 40, 90, .5); font-weight: 800; font-size: 17px; animation: breathe 1.6s ease-in-out infinite; }
 .press .ico { color: #fff; width: 22px; height: 22px; }
@@ -265,11 +265,20 @@ kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid)
 @keyframes drift { to { transform: translate(3%, -2%) scale(1.06); } }
 #loading.exit::before { animation: drift 7s ease-in-out infinite alternate, iris .9s cubic-bezier(.7, 0, .2, 1) .12s forwards; }
 @keyframes iris { to { --r: calc(130vmax + 80px); } }
-.load-word { position: relative; display: flex; font-size: clamp(110px, 16vw, 200px); font-weight: 900; letter-spacing: .01em; color: #2a6ff0;
+.load-word { position: relative; display: flex; font-size: clamp(76px, 11vw, 150px); font-weight: 900; letter-spacing: -.03em; color: #2a6ff0;
   text-shadow: 0 2px 0 #a9c8f7, 0 4px 0 #97bbf3, 0 6px 0 #85aef0, 0 9px 3px rgba(30, 60, 140, .2), 0 20px 28px rgba(30, 60, 140, .18); }
 .load-word i { display: inline-block; font-style: normal; opacity: 0; transform-origin: 50% 90%; transform: translateY(46px) rotateX(70deg) scale(.6); }
-.load-word i.bang { color: #ff5a3d; text-shadow: 0 2px 0 #ffc2a8, 0 4px 0 #ffad8c, 0 6px 0 #ff9870, 0 9px 3px rgba(160, 50, 20, .2), 0 20px 28px rgba(160, 50, 20, .18); margin-left: .04em; }
-#loading.go .load-word i { animation: land .52s var(--spring) forwards; animation-delay: calc(.12s + var(--k) * .17s); }
+.load-word i.sp, .logo .word i.sp { width: .09em; }
+/* "Zone" is bright red: a gradient fill, with the extrusion built from stacked drop-shadows
+   (text-shadow would show through a clipped, transparent fill) */
+.logo .word i.z, .load-word i.z { color: transparent; text-shadow: none;
+  background: linear-gradient(180deg, #ffa27c 4%, #ff3b3b 46%, #ec1430 100%); -webkit-background-clip: text; background-clip: text; }
+.logo .word i.z { filter: drop-shadow(0 2px 0 #f0293a) drop-shadow(0 2px 0 #d41f33) drop-shadow(0 2px 0 #b5172c) drop-shadow(0 2px 0 #961024)
+  drop-shadow(0 4px 3px rgba(90, 10, 20, .25)) drop-shadow(0 18px 26px rgba(10, 40, 90, .28)); }
+.load-word i.z { filter: drop-shadow(0 2px 0 #f0293a) drop-shadow(0 2px 0 #d41f33) drop-shadow(0 2px 0 #b5172c) drop-shadow(0 6px 10px rgba(140, 20, 30, .22)); }
+.wordmark .z { background: linear-gradient(170deg, #ff7a5a 10%, #ff2d3a 55%, #c8102a); -webkit-background-clip: text; background-clip: text; }
+.load-word i.bang { margin-left: .02em; }
+#loading.go .load-word i { animation: land .52s var(--spring) forwards; animation-delay: calc(.12s + var(--k) * .13s); }
 #loading.go .load-word i.bang { animation: bang .62s var(--spring) forwards; animation-delay: 1.24s; }
 @keyframes land { to { opacity: 1; transform: none; } }
 @keyframes bang { 0% { opacity: 0; transform: translateY(-120px) scale(.6) rotate(-14deg); } 55% { opacity: 1; transform: translateY(8px) scale(1.25) rotate(6deg); } 100% { opacity: 1; transform: none; } }

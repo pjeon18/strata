@@ -339,7 +339,7 @@ bots.
 - **Q3 Where does it get hard?** (Mostly answered by D17: the one-block core grows 6, 18, 38, 66, 102 blocks a layer, and tempo speeds the gun up to match.) Originally: layer 3 already needed 222 faces. Either
   that's the difficulty curve (bigger layers, faster meteors), or blocks should
   scale up with the core (2×2 bricks from layer 3).
-- **Q4 Name.** "Strata" is a placeholder.
+- **Q4 Name (answered 2026-11-03).** Paul named it **Core Zone**. The repo, the live URL (/strata/) and the `strata-*` storage keys keep the old name so saved progress and shared links still work.
 
 ## Known gaps in this slice
 
@@ -683,3 +683,11 @@ even water without patches, so those are left out.
   - Sealed layers stay sealed (Q2 answered as denial only, as recommended).
     The board shows layers sealed out of 4 against blocks broken.
 
+
+**D29 — Core Zone, and film rigs (Paul, 2026-11-03).**
+- **The name is Core Zone.** The title, the menus, the page title and the intro spell it. The intro word is "CORE ZONE!" with a gap for the space, on a 0.13 s beat so the "!" still lands at 1.24 s. The splash logo shrank to fit nine letters on one line. The Survival outro callout reads "Round over".
+- **Film and screenshot rigs** (dev handle only, nothing a player can reach):
+  - `__strata.S.cine = { pos, look, fov, roll, ship, bots }` takes the camera over for the frame, just before it renders. `ship` and `bots` pose the planes so a shot can frame them by hand.
+  - `__strata.volley(from, n)` fires n blocks from a point at the nearest open faces.
+  - `__strata.wave()` sets off a shockwave.
+- The capture scripts, stills, brand marks and storyboard live in `assets/films/core-zone/`. The Figma file is "Core Zone — Assets & Storyboard".

@@ -1400,7 +1400,7 @@ function outro() {
   outroR = Math.max(R * 2.6 + 8, Math.hypot(camera.position.x, camera.position.z));
   outroA = Math.atan2(camera.position.x, camera.position.z); outroY = camera.position.y;
   const what = S.game === 'containment' ? `You held out for ${clock(S.time)}` : S.sealed === 1 ? '1 layer sealed' : `${S.sealed} layers sealed`;
-  setTimeout(() => S.mode === 'outro' && HUD.callout(S.game === 'containment' ? 'Held!' : 'Strata', what, S.game === 'containment' ? 'bad' : 'good'), 350);
+  setTimeout(() => S.mode === 'outro' && HUD.callout(S.game === 'containment' ? 'Held!' : 'Round over', what, S.game === 'containment' ? 'bad' : 'good'), 350);
 }
 function outroCamera(rdt) {
   const k = 1 - S.outroT / OUTRO, e = 1 - (1 - k) ** 3, a = outroA + e * 1.1;
@@ -1571,6 +1571,15 @@ function frame(rdt) {
   ocean.material.uniforms.t.value = S.t;
   world.update(S.t);
   soundTick();
+  // film/screenshot rigs can take the camera over for a frame (window.__strata.S.cine)
+  if (S.cine) {
+    const c = S.cine; camera.position.set(...c.pos); camera.up.set(0, 1, 0); camera.lookAt(...c.look);
+    if (c.roll) camera.rotateZ(c.roll);
+    if (c.fov && camera.fov !== c.fov) { camera.fov = c.fov; camera.updateProjectionMatrix(); }
+    const pose = (m, p) => { m.position.set(...p.pos); m.up.set(0, 1, 0); m.lookAt(...p.look); if (p.roll) m.rotateZ(p.roll); };
+    if (c.ship) pose(pilot.mesh, c.ship);
+    if (c.bots) c.bots.forEach((p, i) => { if (bots[i] && !(bots[i].dead > 0)) { bots[i].mesh.visible = true; pose(bots[i].mesh, p); } });
+  }
   // balance sims step thousands of frames: skip drawing them
   if (!S.headless) post.render(scene, camera);
 }
@@ -1637,7 +1646,7 @@ else {
 requestAnimationFrame(tick);
 
 window.__strata = {
-  S, G, pilot, camera, T, Items, energy, music: musicState, pause: () => setMode('pause'),
+  S, G, pilot, camera, scene, renderer, T, Items, FX, energy, music: musicState, pause: () => setMode('pause'),
   step: (dt = 1 / 60, n = 1) => { for (let k = 0; k < n; k++) frame(dt); },
   start: (game = 'survival', level = 1, loadout) => { S.level = LEVELS[level - 1]; if (loadout) S.loadout = loadout; newRound(game); setMode('play'); },
   screen: scr => setMode('title', scr), over: () => gameOver(),
@@ -1654,4 +1663,9 @@ window.__strata = {
   // debug: cover every open face except `leave` of them
   cover: (leave = 0) => { for (const f of S.a.faces.slice(leave)) { G.place(f[0] + f[3], f[1] + f[4], f[2] + f[5]); S.lastPlace.set(f[0] + f[3], f[1] + f[4], f[2] + f[5]); } reanalyze(); return S.a.exposedFaces; },
   drone: () => T.spawnDrone(),
+  // film rigs: fire n blocks from a point at the open faces nearest it, and set off a shockwave
+  volley: (from, n = 1, kind = 'single') => { const p = new THREE.Vector3(...from), at = f => p.distanceToSquared(new THREE.Vector3(f[0] + f[3], f[1] + f[4], f[2] + f[5]));
+    for (const f of S.a.faces.slice().sort((a, b) => at(a) - at(b)).filter(f => !blocked(f[0] + f[3], f[1] + f[4], f[2] + f[5])).slice(0, n)) fireBuild(p, { x: f[0] + f[3], y: f[1] + f[4], z: f[2] + f[5], n: [f[3], f[4], f[5]] }, 0, kind); },
+  wave: () => { S.charge = 3; shockwave(); },
+  bolt: (from, to) => { const p = new THREE.Vector3(...from); fireBlast(p, new THREE.Vector3(...to).sub(p).normalize(), false, 0); },
 };
