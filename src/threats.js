@@ -12,8 +12,36 @@ export const KINDS = {
   normal: { r: 0.95, speed: 1, hp: 2, smash: 1.9, color: 0x8a6aa6, trail: 0.4 },
   fast: { r: 0.6, speed: 1.8, hp: 1, smash: 1.4, color: 0xd2644a, trail: 0.28 },
 };
-const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-const rockMats = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, paint(v.color, { roughness: 0.75, rim: 0.3 })]));
+// Rocks: a subdivided dodecahedron pushed in and out by a little noise, so
+// each reads as a lumpy faceted boulder. Three shapes, picked at random.
+const rockGeos = [11, 23, 37].map(seed => {
+  const g = new THREE.DodecahedronGeometry(1, 1), p = g.attributes.position, v = new THREE.Vector3();
+  const h = (x, y, z) => { const q = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719 + seed) * 43758.5453; return q - Math.floor(q); };
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    // the same corner always gets the same push, so the faces stay joined
+    const k = h(Math.round(v.x * 100), Math.round(v.y * 100), Math.round(v.z * 100));
+    v.multiplyScalar(0.82 + k * 0.32 + Math.sin(v.x * 3 + seed) * 0.05);
+    p.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeVertexNormals();
+  return g;
+});
+const rockMats = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, paint(v.color, { roughness: 0.85, rim: 0.35, rimColor: 0xffc08a, flatShading: true })]));
+// heat trail: one cone, hot and opaque at the rock, thinning to nothing behind
+const trailGeo = new THREE.ConeGeometry(1, 1, 18, 1, true).translate(0, 0.5, 0);
+const trailMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { hot: { value: new THREE.Color(0xfff0c0) }, warm: { value: new THREE.Color(PAL.orange) } },
+  vertexShader: `varying float vV; varying float vEdge;
+    void main(){ vV = uv.y; vec4 mv = modelViewMatrix * vec4(position, 1.);
+      vec3 n = normalize(normalMatrix * normal); vEdge = abs(dot(n, normalize(-mv.xyz)));
+      gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: `uniform vec3 hot, warm; varying float vV; varying float vEdge;
+    void main(){ float a = pow(1. - vV, 1.6) * smoothstep(.05, .7, vEdge);
+      gl_FragColor = vec4(mix(hot, warm, smoothstep(0., .45, vV)) * a * .85, 1.); }`,
+});
+const UP = new THREE.Vector3(0, 1, 0);
 const markGeo = new THREE.RingGeometry(0.5, 0.6, 40);
 // a hit rock goes pure white for a couple of frames
 const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -45,12 +73,16 @@ export function spawnMeteor(speed, kind = 'normal') {
   const dir = new THREE.Vector3().randomDirection();
   dir.y = Math.abs(dir.y) * 0.8 + 0.1; dir.normalize();
   const pos = target.clone().addScaledVector(dir, 42);
-  const m = new THREE.Mesh(rockGeo, rockMats[kind]); m.castShadow = true; m.position.copy(pos); m.scale.setScalar(K.r);
+  const m = new THREE.Mesh(rockGeos[(Math.random() * 3) | 0], rockMats[kind]); m.castShadow = true; m.position.copy(pos); m.scale.setScalar(K.r);
+  const trail = fxOnly(new THREE.Mesh(trailGeo, trailMat));
+  trail.scale.set(K.r * 0.8, K.r * (3 + K.speed * 3), K.r * 0.8);
+  trail.quaternion.setFromUnitVectors(UP, dir);
+  trail.position.copy(pos);
   const mark = fxOnly(new THREE.Mesh(markGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.coral).multiplyScalar(1.3), transparent: true, opacity: 0.9, depthTest: false })));
   mark.scale.setScalar(K.r * 1.15); mark.renderOrder = 15;
   mark.position.copy(target).addScaledVector(dir, 0.6); mark.lookAt(target.clone().add(dir.clone().multiplyScalar(2)));
-  group.add(m, mark);
-  meteors.push({ m, mark, kind, K, pos, vel: dir.clone().multiplyScalar(-speed * K.speed), target, hp: K.hp, spin: new THREE.Vector3().randomDirection(), age: 0 });
+  group.add(m, mark, trail);
+  meteors.push({ m, mark, trail, kind, K, pos, vel: dir.clone().multiplyScalar(-speed * K.speed), target, hp: K.hp, spin: new THREE.Vector3().randomDirection(), age: 0 });
 }
 
 const droneBody = new THREE.SphereGeometry(0.38, 18, 12), droneEye = new THREE.SphereGeometry(0.13, 12, 8);
@@ -70,7 +102,7 @@ export function spawnDrone() {
 
 function kill(list, k) {
   const o = list[k];
-  if (o.m) group.remove(o.m, o.mark); else group.remove(o.g);
+  if (o.m) group.remove(o.m, o.mark, o.trail); else group.remove(o.g);
   list.splice(k, 1);
 }
 
@@ -79,14 +111,15 @@ export function update(dt, t, hooks, shipPos, onShipHit) {
   for (let k = meteors.length - 1; k >= 0; k--) {
     const o = meteors[k]; o.age += dt;
     o.pos.addScaledVector(o.vel, dt);
-    o.m.position.copy(o.pos);
+    o.m.position.copy(o.pos); o.trail.position.copy(o.pos);
     o.m.rotateOnAxis(o.spin, dt * 2.5);
     if (o.flash > 0 && (o.flash -= dt) <= 0) o.m.material = rockMats[o.kind];
     // still while far; blinks once impact is close
     const eta = o.pos.distanceTo(o.target) / o.vel.length();
     o.eta = eta;
     o.mark.visible = eta > BLINK_ETA || Math.floor(t * 9) % 2 === 0;
-    if (Math.random() < 0.7) FX.dot(o.pos.clone().addScaledVector(o.vel, -0.06), Math.random() < 0.5 ? PAL.orange : PAL.sand, o.K.trail, 0.35);
+    // a few embers shed off the trail, mixed in size
+    if (Math.random() < 0.3) FX.dot(o.pos.clone().addScaledVector(o.vel, -0.12).addScaledVector(o.spin, (Math.random() - 0.5) * o.K.r), Math.random() < 0.5 ? PAL.orange : 0xffe2a0, o.K.trail * (0.2 + Math.random() * 0.3), 0.4);
     if (o.pos.distanceTo(shipPos) < 0.9 + o.K.r) { onShipHit(o.pos, o); FX.burst(o.pos, o.K.color, 14, 9, 0.3); kill(meteors, k); continue; }
     const cell = [Math.round(o.pos.x), Math.round(o.pos.y), Math.round(o.pos.z)];
     if (G.solid(...cell) || o.pos.distanceTo(o.target) < 0.4) {

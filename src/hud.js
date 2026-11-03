@@ -123,11 +123,16 @@ export function ammo(frac, { charging, empty, infinite }) {
   c.classList.toggle('inf', infinite);
 }
 
-export function keys(game) {
-  const k = (key, label) => `<span><kbd>${key}</kbd>${label}</span>`;
-  $('keys').innerHTML = [k('Mouse', 'Aim'), k('WASD', 'Fly'), k('Space', 'Up'), k('Shift', 'Down'), k('Q', 'Dash'), k('Tap twice', 'Swoop'),
-    ...(game === 'containment' ? [k('Click', 'Blast')] : [k('Left', 'Place'), k('Right', 'Blast')]), k('E', 'Item'), k('M', 'Mute'), k('H', 'Hide')].join('');
+// The key hints along the bottom. Each one dims once you've used that
+// control; when every flying and shooting control has been used, the whole
+// bar fades away (H brings it back).
+export function keys(game, used) {
+  const k = (id, key, label) => `<span data-k="${id}" class="${used.has(id) ? 'used' : ''}"><kbd>${key}</kbd>${label}</span>`;
+  $('keys').innerHTML = [k('aim', 'Mouse', 'Aim'), k('fly', 'WASD', 'Fly'), k('up', 'Space', 'Up'), k('down', 'Shift', 'Down'), k('dash', 'Q', 'Dash'), k('swoop', 'Tap twice', 'Swoop'),
+    ...(game === 'containment' ? [k('blast', 'Click', 'Blast')] : [k('place', 'Left', 'Place'), k('blast', 'Right', 'Blast')]), k('item', 'E', 'Item'), k('mute', 'M', 'Mute'), k('hide', 'H', 'Hide')].join('');
 }
+export function usedKey(id) { const el = $('keys').querySelector(`[data-k="${id}"]`); if (el) el.classList.add('used'); }
+export const retireKeys = () => $('keys').classList.add('retired');
 
 // tutorial card: progress dots, one instruction, the keys it needs; a tick when it's done
 let tutN = -1;

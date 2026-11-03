@@ -82,20 +82,43 @@ export function update(dt, t, shipPos, canCollect) {
     const s = smokes[k]; s.t -= dt;
     const grow = Math.min(1, (9 - s.t) * 3), fade = Math.min(1, s.t / 1.2);
     s.g.scale.setScalar(Math.max(0.01, grow * fade) * s.r);
-    s.g.rotation.y += dt * 0.15;
+    s.g.rotation.y += dt * 0.12;
+    // each puff rolls and breathes on its own, and drifts out a touch
+    for (const p of s.g.children) {
+      const u = p.userData;
+      p.rotation.x += dt * u.spin; p.rotation.z += dt * u.spin * 0.6;
+      p.scale.setScalar(u.s * (1 + 0.07 * Math.sin(t * 1.3 + u.ph)));
+      p.position.copy(u.home).multiplyScalar(1 + (9 - s.t) * 0.012);
+    }
     if (s.t <= 0) { group.remove(s.g); smokes.splice(k, 1); }
   }
   return got;
 }
 
-const puffGeo = new THREE.IcosahedronGeometry(1, 2);
-const smokeMat = paint(0xe9edf5, { roughness: 1, rim: 0.15, emissive: 0xffffff, emissiveIntensity: 0.2, transparent: true, opacity: 0.94 });
+// Smoke: a cloud of soft puffs in two tones, mixed sizes (bigger toward the
+// middle), each one solid where it faces you and thinning out at its edges,
+// so the cloud has depth and you can half see through its rim.
+const puffGeo = new THREE.IcosahedronGeometry(1, 3);
+const smokeMats = [0xf1f4f9, 0xdde2ec].map(c => {
+  const m = paint(c, { roughness: 1, rim: 0.2, emissive: 0xffffff, emissiveIntensity: 0.22, transparent: true, depthWrite: false });
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = sh => {
+    prev(sh);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>',
+      'gl_FragColor.a *= .92 * smoothstep(.0, .6, dot(normalize(normal), normalize(vViewPosition)));\n#include <dithering_fragment>');
+  };
+  m.customProgramCacheKey = () => 'smoke';
+  return m;
+});
 export function throwSmoke(pos) {
   const g = new THREE.Group();
-  for (let i = 0; i < 14; i++) {
-    const m = new THREE.Mesh(puffGeo, smokeMat);
-    const d = new THREE.Vector3().randomDirection().multiplyScalar(0.55 * Math.random());
-    m.position.copy(d); m.scale.setScalar(0.35 + Math.random() * 0.3);
+  for (let i = 0; i < 26; i++) {
+    const m = new THREE.Mesh(puffGeo, smokeMats[i % 2]);
+    const d = new THREE.Vector3().randomDirection().multiplyScalar(0.12 + 0.5 * Math.random());
+    d.y *= 0.7;
+    const s = (0.16 + Math.random() * 0.22) * (1.25 - d.length());
+    m.position.copy(d); m.scale.setScalar(s);
+    m.userData = { home: d.clone(), s, spin: (Math.random() - 0.5) * 0.8, ph: Math.random() * 6.3 };
     g.add(m);
   }
   g.position.copy(pos); g.scale.setScalar(0.01);

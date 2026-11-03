@@ -486,3 +486,113 @@ the horizon. Two layers of small drifting ripples catch sun glints up close
 and fade out with distance, so far water stays calm instead of shimmering.
 The shoreline is narrow: about 9 units of shallows, a sandy rim and a thin
 foam line that follows the same wobble as the island mesh and moves gently.
+
+## Polish plan 2: making it feel finished (2026-11-02)
+
+From a 19-moment screenshot audit (dash, swoop, seal, impacts, items, smoke,
+nibblers, Containment, every menu). Ranked inside each group by how much a
+player notices it. Paul picks; the trail fix is already done (D23).
+
+**Effects and rendering**
+1. (Done, D23) Dash, swoop and boost trails. Each frame left a large, uniform
+   white ball at the plane, so a swoop drew a column of same-size discs across
+   the screen, and the dash ring was nearly as big as the plane. Now: thin
+   wingtip streaks of mixed sizes set behind the wing, a small uneven kickoff
+   scatter, a smaller dash ring and a sparse boost trail.
+2. (Done, D24) Ambient occlusion on the core. Every cube face is the same brightness, so a
+   big core reads as flat cardboard (Layer 6 especially). Darken a cube's edges
+   and corners where it meets neighbours, baked per vertex from the grid. This
+   is the biggest "rendered" upgrade for the least cost.
+3. (Done, D24) A crack you can see. Losing a life shows only in the HUD gems. Draw a dark
+   jagged crack decal on the struck face, with a few chips, and a red pulse on
+   the core edges.
+4. (Done, D24) Meteor impacts. Now a white blob. Add a dust ring that spreads along the
+   face, dark rock chips that tumble away, a brief scorch mark on loose blocks
+   that survived, and a deeper boom.
+5. (Done, D24) Meteors themselves: flat dodecahedrons with a trail of separate beads.
+   Give them a lumpy rock (noise-displaced), glowing cracks on the side facing
+   their direction of travel, and a continuous tapered heat trail.
+6. (Done, D24) Smoke power-up: a single giant grey lump that fills the screen and looks
+   solid. Make it 20 to 30 soft puffs of mixed size that roll and drift, partly
+   see-through at the edges, thrown a little further away.
+7. (Done, D24) Shield: a flat pink sphere over the plane. Make it a fresnel bubble (clear in
+   the middle, bright at the rim) with a ripple where a meteor hits it.
+8. Power-ups are coloured cubes you can't tell apart until you've learned the
+   colours. Put each one's icon on its faces.
+9. Blaster bolts read as a string of yellow beads. Make them short stretched
+   streaks with a hot core.
+10. Seal moment: add a colour wave rolling across the new layer from where the
+    last block landed (the per-block delay exists; it needs a visible sweep),
+    and a soft shock that ripples the sea below.
+11. World life: gulls circling the big island, a boat or two leaving wakes, a
+    wisp of smoke from the volcano, cloud shadows drifting across the sea.
+12. Islands: a crater on the volcano, rocks at the waterline, a few palms
+    rather than only round trees.
+
+**Feel and mechanics**
+13. Three-two-one countdown before each run, so the first wave never lands
+    while you're finding the core (from batch 2).
+14. Music that builds: brighter and faster in the last 20 seconds and on your
+    last life (from batch 2).
+15. Score where it happens: small "+30" numbers that rise from the face you
+    sealed or the meteor you hit, as well as the big callout.
+16. An out-of-ammo nudge: the crosshair shakes and the ammo arc flashes, so an
+    empty click is never silent on screen.
+17. End of round: instead of cutting to the result, the camera orbits the
+    finished core for two seconds with the final layer count, then the card.
+18. A clean-seal bonus for sealing a layer without losing a life.
+19. Engine sound that rises with speed, a whoosh on swoops that pans with the
+    direction, and a whistle that grows as a meteor gets close.
+
+**HUD and screens**
+20. (Done, D24) The key-hint bar lists twelve controls for the whole round. Show it for the
+    first round only (or until each control has been used), then hide it; H
+    still brings it back.
+21. (Done, D24) The empty power-up slot says "Empty" all game. Hide the label until you
+    hold something.
+22. Callouts keep showing over the pause blur. Pause should clear them.
+23. Result screen: add accuracy, best streak and fastest layer, and animate the
+    score counting up.
+24. Settings: field of view, crosshair size and a colour-blind option for the
+    layer colours.
+
+**D23 notes: trails.** Paul: the boost and swoop smoke took up too much of the
+screen. The dash trail dropped a 0.3-unit ball at the plane every frame, plus
+two 0.16 dots at the wingtips; over a 0.55-second swoop that drew a column of
+identical discs across the screen. Now each wingtip leaves a fine streak
+(0.04 to 0.09, set just behind the wing), a dash adds a few sparse puffs off
+the tail, and the push-off is a small uneven scatter of five puffs from 0.08 to
+0.24. The dash ring shrank from 2.2 to 0.8 and lasts 0.18 seconds. The Super
+Speed trail is sparser, smaller and mixed in size (0.05 to 0.13).
+
+**D24 notes: the top five.** Built 2026-11-02 from polish plan 2.
+- Contact shading (`blocks.js`). Every block carries a 12-bit mask of which
+  edge-diagonal neighbours are solid, as an instance attribute. The shader
+  darkens a face toward any edge with a block across it (down to 52%), so
+  steps and inside corners on the core read as depth. Loose bricks get it too.
+  The mask is rebuilt on every sync (12 lookups per block).
+- Cracks. A strike on bare core puts a crack decal (three canvas-drawn
+  variants, a dark line over a pale broken edge) on the nearest open face,
+  with dark chips. A crack hides while something sits in front of it and goes
+  for good once that face is sealed under a new layer, which is also when the
+  life comes back. New rounds clear them.
+- Impacts: a short white flash, a sand-coloured dust ring and a white ring
+  spreading flat along the struck face, dark chips, purple chunks, a few
+  embers, and nine dust puffs of mixed size and tone that hang about 0.8
+  seconds. The sound gains a low thump.
+- Meteors: three lumpy faceted rock shapes (a subdivided dodecahedron pushed
+  in and out per corner, flat-shaded, with a warm rim) and one tapered heat
+  cone behind each: white-hot at the rock, orange, then gone. Its length
+  scales with speed. Embers are sparser and mixed in size.
+- Smoke: 26 puffs in two tones, bigger toward the middle. Each rolls and
+  breathes on its own and the cloud drifts out a touch. Each puff is solid
+  facing you and thins at its edge, so the rim is half see-through. The
+  gameplay radius is unchanged.
+- Shield: an additive soap-bubble shell, nearly clear facing you and bright
+  at the rim, with faint drifting bands. A meteor it breaks (or a stun it
+  blocks in Versus) sends a ripple out from where it landed.
+- Key hints: each one dims once you've used that control. Once Aim, Fly, Up,
+  Down, Dash, Swoop, Place and Blast have all been used, the bar fades away
+  for good (`strata-used`). H brings it back. The empty item slot no longer
+  says "Empty".
+

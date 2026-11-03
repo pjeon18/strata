@@ -100,7 +100,12 @@ svg { display: block; width: 100%; height: 100%; fill: currentColor; }
 #arrows .arrow.theirs { background: linear-gradient(180deg, #a993ff, var(--violet-a)); }
 
 .hints { position: absolute; right: 26px; bottom: 22px; display: flex; gap: 18px; font-size: 15px; font-weight: 800; text-shadow: 0 1px 4px rgba(20, 40, 90, .55); }
-.hints span { display: flex; align-items: center; gap: 7px; }
+.hints span { display: flex; align-items: center; gap: 7px; transition: opacity .6s; }
+#keys { transition: opacity .8s, transform .8s var(--out); }
+#keys.retired { opacity: 0; transform: translateY(12px); pointer-events: none; }
+#keys span.used { opacity: .32; }
+/* the item slot only names what it holds */
+.slot:not(.full) .slot-name { visibility: hidden; }
 kbd { font: inherit; font-size: 12px; font-weight: 900; color: var(--navy-solid); background: #fff; border-radius: 99px; padding: 2px 9px; box-shadow: 0 2px 0 rgba(26,42,82,.35); text-shadow: none; }
 
 /* ---------- callouts ---------- */

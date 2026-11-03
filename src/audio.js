@@ -100,7 +100,7 @@ export const sfx = {
   blast: () => { noise(0.12, 0.12, 2400); tone(160, 0.12, 'square', 0.05, 0, 0.5); },
   pop: () => { noise(0.08, 0.1, 3000); tone(520, 0.08, 'triangle', 0.08, 0, 0.5); },
   seal: () => [0, 2, 4, 5, 7].forEach((s, i) => tone(note(392, s), 0.4, 'triangle', 0.14, i * 0.06)),
-  impact: () => { noise(0.4, 0.3, 700); tone(90, 0.35, 'sine', 0.25, 0, 0.5); },
+  impact: () => { noise(0.4, 0.3, 700); tone(90, 0.35, 'sine', 0.25, 0, 0.5); tone(48, 0.55, 'sine', 0.3, 0.02, 0.6); },
   crack: () => { noise(0.5, 0.35, 500); tone(70, 0.6, 'sawtooth', 0.12, 0, 0.6); },
   warn: () => { tone(660, 0.08, 'square', 0.04); tone(660, 0.08, 'square', 0.04, 0.12); },
   stun: () => tone(600, 0.4, 'triangle', 0.1, 0, 0.3),

@@ -61,8 +61,27 @@ function updateBeacons(t) {
 }
 const shipMesh = buildShip(); scene.add(shipMesh);
 const pilot = new Pilot(shipMesh);
-const shield = new THREE.Mesh(new THREE.SphereGeometry(1.45, 28, 18), paint(0xff7ac0, { transparent: true, opacity: 0.22, rim: 1.4, rimColor: 0xffc2e2, depthWrite: false }));
-shield.visible = false; scene.add(shield);
+// Shield: a soap-bubble shell, nearly clear facing you and bright at the rim,
+// with faint bands drifting over it. A hit sends a ripple out from where it landed.
+const shieldMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  uniforms: { tint: { value: new THREE.Color(0xff7ac0) }, t: { value: 0 }, hitDir: { value: new THREE.Vector3(0, 1, 0) }, hitAge: { value: 9 } },
+  vertexShader: `varying vec3 vN, vWN, vV;
+    void main(){ vN = normal; vec4 w = modelMatrix * vec4(position, 1.); vWN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - w.xyz);
+      gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `uniform vec3 tint, hitDir; uniform float t, hitAge; varying vec3 vN, vWN, vV;
+    void main(){
+      float fres = pow(1. - abs(dot(vWN, vV)), 2.4);
+      float bands = .5 + .5 * sin(vN.y * 16. + t * 2.2);
+      float ang = acos(clamp(dot(normalize(vN), hitDir), -1., 1.));
+      float rip = exp(-pow((ang - hitAge * 5.) * 4.5, 2.)) * max(0., 1. - hitAge / .7);
+      float a = .02 + fres * .62 + bands * fres * .12 + rip * .8;
+      gl_FragColor = vec4(mix(tint, vec3(1.), fres * .45 + rip * .6) * a, 1.);
+    }`,
+});
+const shield = new THREE.Mesh(new THREE.SphereGeometry(1.45, 40, 24), shieldMat);
+fxOnly(shield); shield.visible = false; scene.add(shield);
+const shieldHit = from => { shieldMat.uniforms.hitDir.value.copy(from).sub(pilot.pos).normalize(); shieldMat.uniforms.hitAge.value = 0; };
 
 const shotGeo = new THREE.BoxGeometry(0.46, 0.46, 0.46), shotMat = paint(PAL.mine, { roughness: 0.3, rim: 0.5 }), botShotMat = paint(PAL.bot, { roughness: 0.3, rim: 0.5 });
 const blastGeo = new THREE.SphereGeometry(0.24, 14, 10), blastMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(PAL.orange).multiplyScalar(2.2) });
@@ -156,7 +175,7 @@ function newRound(game = S.game) {
   clearBots();
   for (const s of shots) scene.remove(s.m);
   shots.length = 0; pending.clear();
-  T.clear(); FX.clear(); Items.clear();
+  T.clear(); FX.clear(); Items.clear(); B.clearCracks();
   const L = S.level;
   S.kick.set(0, 0, 0);
   pilot.mesh.visible = true;
@@ -414,6 +433,7 @@ function updateShots(dt) {
         if (S.game === 'versus' ? s.seat !== S.seat : s.owner) sfx.botPlace(prog); else sfx.place(prog);
         FX.puff(s.to, 0xffffff, 3 + placed, 0.7, 0.32, 0.3);
         if (S.tut && !s.owner) S.tut.placed += placed;
+        if ((!s.owner && s.seat < 0) || (s.seat >= 0 && s.seat === S.seat)) used('place');
         reanalyze();
       } else if (s.seat === S.seat || (s.seat < 0 && !s.owner)) { sfx.fizzle(); FX.puff(s.to, 0xffffff, 2, 0.3, 0.25, 0.2); }
     } else if (s.kind === 'bomb') {
@@ -470,7 +490,8 @@ const keys = new Set();
 let yaw = 0, pitch = 0, mouseL = false, mouseR = false, locked = false;
 addEventListener('keydown', e => {
   keys.add(e.code);
-  if (e.code === 'KeyH') $('keys').classList.toggle('hidden');
+  if (e.code === 'KeyH') { const k = $('keys'); if (k.classList.contains('retired')) k.classList.remove('retired'); else k.classList.toggle('hidden'); used('hide'); }
+  if (S.mode === 'play' && !S.auto) used(USE_KEYS[e.code]);
   if (e.code === 'KeyM') toggleMute();
   if (e.code === 'KeyE' && S.mode === 'play' && !S.auto) useItem();
   if (e.code === 'KeyQ' && !e.repeat && S.mode === 'play' && !S.auto) dash();
@@ -495,6 +516,7 @@ addEventListener('mousemove', e => {
   const k = 0.0021 * prefs.sens;
   yaw -= e.movementX * k;
   pitch = THREE.MathUtils.clamp(pitch - e.movementY * k * (prefs.invert ? -1 : 1), -1.45, 1.45);
+  if (S.mode === 'play' && Math.abs(e.movementX) + Math.abs(e.movementY) > 2) used('aim');
   if (S.tut) S.tut.turned += (Math.abs(e.movementX) + Math.abs(e.movementY)) * k;
 });
 canvas.addEventListener('mousedown', e => {
@@ -506,7 +528,19 @@ canvas.addEventListener('mousedown', e => {
 addEventListener('mouseup', e => { if (e.button === 0) mouseL = false; if (e.button === 2) mouseR = false; });
 addEventListener('contextmenu', e => e.preventDefault());
 
-function toggleMute() { setMuted(!isMuted()); HUD.mute(isMuted()); }
+function toggleMute() { setMuted(!isMuted()); HUD.mute(isMuted()); used('mute'); }
+
+// Which controls the player has used, kept between visits, so the hint bar
+// can retire itself. Item, Mute and Hide don't hold it up.
+const USE_KEYS = { KeyW: 'fly', KeyA: 'fly', KeyS: 'fly', KeyD: 'fly', Space: 'up', ShiftLeft: 'down', ShiftRight: 'down' };
+const CORE_KEYS = ['aim', 'fly', 'up', 'down', 'dash', 'swoop', 'place', 'blast'];
+const usedSet = new Set((() => { try { return JSON.parse(localStorage.getItem('strata-used') || '[]'); } catch { return []; } })());
+function used(id) {
+  if (!id || usedSet.has(id) || S.auto) return;
+  usedSet.add(id); HUD.usedKey(id);
+  try { localStorage.setItem('strata-used', JSON.stringify([...usedSet])); } catch {}
+  if (CORE_KEYS.every(k => usedSet.has(k))) setTimeout(HUD.retireKeys, 1200);
+}
 HUD.mute(isMuted(), toggleMute);
 
 // ---------- screens ----------
@@ -723,7 +757,7 @@ function useItem() {
     if (S.game === 'versus') V.smoke(at); else Items.throwSmoke(at);
   }
   S.held = null; HUD.slot(null);
-  sfx.use();
+  sfx.use(); used('item');
   notice(it.blurb, 'lilac');
 }
 function updateItems(dt) {
@@ -736,9 +770,10 @@ function updateItems(dt) {
   }
   S.fx.boost = Math.max(0, S.fx.boost - dt); S.fx.shield = Math.max(0, S.fx.shield - dt);
   pilot.boost = S.fx.boost > 0 ? 1.9 : 1;
-  if (S.fx.boost > 0 && Math.random() < 0.6) FX.dot(pilot.pos.clone().addScaledVector(pilot.fwd, -0.9), 0xffffff, 0.18, 0.25);
+  if (S.fx.boost > 0 && Math.random() < 0.45) FX.dot(pilot.pos.clone().addScaledVector(pilot.fwd, -1.1), 0xffffff, 0.05 + Math.random() * 0.08, 0.2 + Math.random() * 0.12);
   shield.visible = S.fx.shield > 0 && (S.fx.shield > 2 || Math.floor(S.t * 8) % 2 === 0);
   shield.position.copy(pilot.pos);
+  shieldMat.uniforms.t.value = S.t; shieldMat.uniforms.hitAge.value += dt;
 }
 
 // ---------- play ----------
@@ -775,10 +810,11 @@ function dash() {
   if (!pilot.tryDash(dir, R)) { if (pilot.stun <= 0) noAmmo(); return; }
   S.dodged = false;
   if (S.tut) S.tut.dashes++;
+  used('dash');
   sfx.dash();
   S.fovKick += 4;
-  FX.ring(pilot.pos, dir, 0xffffff, 2.2, 0.3);
-  FX.puff(pilot.pos, 0xffffff, 6, 0.6, 0.35, 0.3);
+  FX.ring(pilot.pos, dir, 0xffffff, 0.8, 0.18);
+  kickoff(dir);
 }
 // Close call: a dash that slips past a meteor or an enemy shot at close range
 // gives the charge back, a beat of slow motion and a few points.
@@ -838,9 +874,10 @@ function swoop(way) {
   if (!pilot.trySwoop(from, end.clone().normalize(), r0, end.length(), way === 'left' ? 1 : -1)) { if (pilot.stun <= 0) noAmmo(); return; }
   Object.assign(swoopAim, { y0: yaw, dy: THREE.MathUtils.euclideanModulo(y1 - yaw + Math.PI, Math.PI * 2) - Math.PI, p0: pitch, p1 });
   if (S.tut) S.tut.swoops++;
+  used('swoop');
   sfx.swoop();
   S.fovKick += 6;
-  FX.puff(pilot.pos, 0xffffff, 6, 0.6, 0.35, 0.3);
+  kickoff(to.clone().sub(from));
 }
 // the heading and pitch whose chase camera, from a plane at p, looks through the
 // core's centre; looking straight up or down keeps the heading you had
@@ -860,11 +897,20 @@ function swoopCamera() {
   const k = pilot.swoopK;
   yaw = swoopAim.y0 + swoopAim.dy * k; pitch = swoopAim.p0 + (swoopAim.p1 - swoopAim.p0) * k;
 }
+// the push-off for a dash or swoop: a small, uneven scatter of puffs left
+// behind you, sizes mixed so it reads as air, not a row of balls
+function kickoff(dir) {
+  const back = pilot.pos.clone().addScaledVector(dir.clone().normalize(), -0.7);
+  for (let k = 0; k < 5; k++) FX.puff(back, 0xffffff, 1, 0.5, 0.08 + Math.random() * 0.16, 0.2 + Math.random() * 0.15);
+}
+// Wingtip streaks while dashing or swooping: fine, mixed sizes, set just
+// behind the wing so they never sit between you and the camera. A dash adds
+// a few sparse puffs off the tail.
 function dashTrail() {
   if (!pilot.dashing && !pilot.swooping) return;
   const b = pilot.mesh.userData.body;
-  for (const s of [-1, 1]) FX.dot(b.localToWorld(tmp.set(s * 1.1, 0, -0.1)), 0xffffff, 0.16, 0.32);
-  FX.dot(pilot.pos, 0xbfefff, 0.3, 0.2);
+  for (const s of [-1, 1]) FX.dot(b.localToWorld(tmp.set(s * 1.05, 0, -0.35)), 0xffffff, 0.04 + Math.random() * 0.05, pilot.swooping ? 0.38 : 0.26);
+  if (pilot.dashing && Math.random() < 0.4) FX.dot(b.localToWorld(tmp.set((Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.3, -0.9)), 0xdff6ff, 0.06 + Math.random() * 0.1, 0.16);
 }
 
 // the blaster: bolt, cross bolt or laser, by loadout; costs energy
@@ -873,6 +919,7 @@ function trySecondary(dt, aimHit) {
   S.blastCD -= dt;
   if (S.blastCD > 0 || pilot.stun > 0) return;
   if (!energy.use(L.cost)) return noAmmo();
+  used('blast');
   const aimPt = camera.position.clone().addScaledVector(F, aimHit ? aimHit.t : 60);
   const from = pilot.nose(), dir = aimPt.sub(from).normalize();
   const vs = S.game === 'versus', team = vs ? S.team : undefined, seat = vs ? S.seat : -1, guest = vs && !V.isHost;
@@ -957,7 +1004,7 @@ function threats(dt) {
   // a dash slips straight through a meteor
   T.update(dt, S.t, { destroyBlock, impact, inSmoke: Items.inSmoke }, pilot.dashing ? NOWHERE : pilot.pos, (p, o) => {
     // a shield breaks the rock instead of you
-    if (S.fx.shield > 0) { kill('meteor', p); return; }
+    if (S.fx.shield > 0) { shieldHit(p); kill('meteor', p); return; }
     pilot.stun = 1.1; pilot.vel.add(pilot.pos.clone().sub(p).setLength(12));
     sfx.stun(); hurtMe(p, 1);
   });
@@ -1075,7 +1122,8 @@ function versusOver(res) {
   }, 1500);
 }
 function stunMe(dur, from) {
-  if (S.fx.shield > 0 || pilot.dashing) return;
+  if (S.fx.shield > 0) return shieldHit(from);
+  if (pilot.dashing) return;
   pilot.stun = dur; pilot.vel.add(pilot.pos.clone().sub(from).setLength(10));
   S.immune = dur + IMMUNE;
   sfx.stun(); hurtMe(from, 0.6 + dur * 0.25);
@@ -1140,9 +1188,22 @@ function critical() {
   HUD.callout('Critical!', 'The core got too big', 'bad');
 }
 
+// A meteor landing: a flash, a ring of dust spreading flat along the face it
+// struck, dark rock chips and a few embers, then dust that hangs a moment.
+const axisOf = p => { const a = [Math.abs(p.x), Math.abs(p.y), Math.abs(p.z)], k = a.indexOf(Math.max(...a)); const n = new THREE.Vector3(); n.setComponent(k, Math.sign(p.getComponent(k)) || 1); return n; };
 function impact(p, cracked) {
-  FX.burst(p, PAL.plum, 14, 9, 0.32); FX.burst(p, PAL.orange, 10, 7, 0.22); FX.puff(p, 0xffffff, 10, 1.6, 0.8, 0.5);
+  const n = axisOf(p);
+  FX.puff(p, 0xffffff, 3, 0.5, 0.7, 0.16);
+  FX.ring(p, n, 0xf3e2b5, 3.2, 0.5); FX.ring(p, n, 0xffffff, 1.8, 0.3);
+  FX.burst(p, 0x3e2f4f, 12, 9, 0.2); FX.burst(p, PAL.plum, 6, 7, 0.26); FX.burst(p, PAL.orange, 6, 10, 0.1);
+  for (let k = 0; k < 9; k++) FX.puff(p.clone().addScaledVector(n, 0.3), k % 3 ? 0xeee6dc : 0xd9cfc4, 1, 2.4, 0.22 + Math.random() * 0.3, 0.6 + Math.random() * 0.4);
   sfx.impact();
+  if (cracked) {
+    // mark the bare face nearest the hit
+    let best = null, bd = 2.2;
+    for (const f of S.a.faces) { const d = Math.hypot(f[0] + f[3] * 0.5 - p.x, f[1] + f[4] * 0.5 - p.y, f[2] + f[5] * 0.5 - p.z); if (d < bd) { bd = d; best = f; } }
+    if (best) { B.crack(best); FX.burst(new THREE.Vector3(best[0] + best[3] * 0.55, best[1] + best[4] * 0.55, best[2] + best[5] * 0.55), 0x2a1a2e, 8, 5, 0.12); }
+  }
   const near = Math.max(0, 1 - camera.position.distanceTo(p) / 30);
   S.shake = Math.max(S.shake, 0.25 + near * 0.5);
   if (cracked && !S.ending && S.game !== 'tutorial') {
@@ -1194,7 +1255,8 @@ function gameOver() {
 
 // ---------- hud ----------
 function hudGame() {
-  HUD.keys(S.game);
+  HUD.keys(S.game, usedSet);
+  if (CORE_KEYS.every(k => usedSet.has(k))) HUD.retireKeys();
   HUD.clock(S.game === 'tutorial' ? null : clock(S.game === 'containment' ? 0 : S.level.time));
   HUD.tab(null);
 }
@@ -1312,7 +1374,7 @@ function warmUp() {
   addBot();
   fireBuild(new THREE.Vector3(0, 0, 10), { x: 0, y: 0, z: 2 }, 1);
   FX.beam(new THREE.Vector3(0, 0, 12), new THREE.Vector3(0, 0, 3), PAL.mine);
-  shield.visible = true; ghosts[0].visible = true;
+  shield.visible = true; ghosts[0].visible = true; B.crack([0, 0, 0, 0, 0, 1]);
   renderer.compile(scene, camera);
   post.render(scene, camera);
   shield.visible = false; ghosts[0].visible = false;
